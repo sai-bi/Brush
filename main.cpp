@@ -1,119 +1,15 @@
-#include "brush.h"
+/**
+ * @author 
+ * @version 2014/05/06
+ */
+#include "cv.h"
+#include "fstream"
+#include "opencv2/highgui/highgui.hpp"
+#include "opencv2/imgproc/imgproc.hpp"
+using namespace std;
+using namespace cv;
 
-/*
-void tempbrush()
-{
-    Mat_<int> region_id(img->height,img->width);
-
-    for(int i = 0;i < img->height;i++){
-        for(int j = 0;j < img->width;j++){
-            region_id(i,j) = smoothRegionID[i*img->width + j];
-        }
-    }
-
-
-
-
-    for (int i = 0; i < regions.size(); ++i)
-    {
-        if(regions[i].regionPixels.empty())
-            continue;
-        int boundary_point_number = regions[i].boundaryPixels.size();
-        //Mat_<double> tangent
-        vector<Point2d> bound = regions[i].boundaryPixels;
-        Mat_<double> tangent(boundary_point_number,2);
-        Mat_<int> boundary(boundary_point_number,2);
-        for(int j = 0;j < boundary_point_number;j++){
-            boundary(j,0) = bound[j].x;
-            boundary(j,1) = bound[j].y;
-        }
-
-        int tangent_number = 6;
-        for(int j = 0;j < boundary_point_number;j++){
-            double tangent_x = 0;
-            double tangent_y = 0;
-            for(int k = 0;k < tangent_number;k++){
-                int index1 = (j + k) % boundary_point_number;
-                int index2 = (j + k + 1) % boundary_point_number;
-
-                double x = boundary(index2,0) - boundary(index1,0);
-                double y = boundary(index2,1) - boundary(index1,1);
-
-                if(abs(x)<1e-10){
-                    //angle = angle + PI/2;
-                    tangent_x += 0;
-                    tangent_y += 1;
-                } else{
-                    //angle = angle + atan(y/x);
-                    double temp = sqrt(x*x + y*y);
-                    tangent_x += x / temp;
-                    tangent_y += y / temp;
-                }
-
-                index2 = (j - k + boundary_point_number) % boundary_point_number;
-                index1 = (j - k - 1 + boundary_point_number) % boundary_point_number;
-                x = boundary(index2,0) - boundary(index1,0);
-                y = boundary(index2,1) - boundary(index1,1);
-
-                if(abs(x)<1e-10){
-                    //angle = angle + PI/2;
-                    tangent_x += 0;
-                    tangent_y += 1;
-                } else{
-                    //angle = angle + atan(y/x);
-                    double temp = sqrt(x*x + y*y);
-                    tangent_x += x / temp;
-                    tangent_y += y / temp;
-                }
-            }
-
-            double temp = sqrt(tangent_x*tangent_x + tangent_y*tangent_y);
-            tangent_x = tangent_x /temp;
-            tangent_y = tangent_y / temp;
-
-            if(tangent_x >= 0){
-                tangent(j,0) = tangent_x;
-                tangent(j,1) = tangent_y;
-            }
-            else{
-                tangent(j,0) = -tangent_x;
-                tangent(j,1) = -tangent_y;
-            }
-
-        }
-
-        double major_axis = 50;
-        double minor_axis = 10;
-
-        int current_region_id = regions[i].regionID;
-        Mat input_image = img;
-
-        Mat tangent_image = Mat::zeros(img->height,img->width,CV_8UC3);
-        for(int j = 0;j < boundary.rows;j++){
-            double x = boundary(j,0);
-            double y = boundary(j,1);
-            double end_x = x;
-            double end_y = y;
-            if(abs(tangent(j,0)) < 1e-10){
-                end_x = x;
-                end_y = y + 10;
-            }
-            else{
-                end_x = x + 10 * tangent(j,0) / sqrt(pow(tangent(j,0),2.0) + pow(tangent(j,1),2.0)); 
-                end_y = y + 10 * tangent(j,1) / sqrt(pow(tangent(j,0),2.0) + pow(tangent(j,1),2.0));
-            }
-            line(tangent_image,Point2d(x,y),Point2d(end_x,end_y),Scalar(255,255,255),3);
-
-            //imshow("tangent",tangent_image);
-            //waitKey(5);
-        }
-
-        place_brush(input_image,tangent,boundary,region_id,major_axis,minor_axis,i);
-
-    }
-
-}
-*/
+#define PI 3.1415926
 
 
 
@@ -374,9 +270,6 @@ Mat_<double> place_brush(const Mat& input_image, const Mat_<double>& tangent,
     }
 
 
-
-
-
     Mat temp_image;
     while(true){
         temp_image = Mat::zeros(height,width,CV_8UC3);
@@ -529,3 +422,262 @@ Mat_<double> place_brush(const Mat& input_image, const Mat_<double>& tangent,
     return result;
 
 }
+void my_show(const Mat_<int>& boundary,int num){
+    Mat src = Mat::zeros( Size(800,800), CV_8UC1 );
+    for(int i = 0;i < num-1;i++){
+        double x_cor = boundary(i,0);
+        double y_cor = boundary(i,1);
+        double end_x = boundary(i+1,0);
+        double end_y = boundary(i+1,1);
+        cout<<end_x<<" "<<end_y<<endl;
+        line(src,Point2d(x_cor,y_cor),Point2d(end_x,end_y),Scalar(255),3,8); 
+    }
+    imshow("src",src);
+    waitKey(0);
+}
+
+void calculate_tangent(const Mat& input_image, 
+        const Mat_<int>& boundary, const Mat_<int>& region_id,int current_region_id,
+        Mat_<Point2d>& tangent){
+
+    int width = input_image.cols;
+    int height = input_image.rows;
+
+    Mat_<int> visited(height,width,0);
+    Mat_<int> current_boundary;
+
+    current_boundary = boundary.clone();
+    int current_boundary_size = current_boundary.rows;
+
+    for(int i = 0;i < boundary.rows;i++){
+        int x = boundary(i,0);
+        int y = boundary(i,1);
+        visited(y,x) = 1;
+    }
+
+
+    while(true){
+        // find new boundary after thinning
+        int new_boundary_size = 0;	
+        Mat_<int> new_boundary(width*height,2);
+        for(int i = 0;i < current_boundary_size;i++){
+            int x = current_boundary(i,0);
+            int y = current_boundary(i,1);
+
+
+            for(int j = -1;j < 2;j++){
+                for(int k = -1;k < 2;k++){
+                    if(j * k != 0 || (j==0 && k==0)){
+                        continue;
+                    }
+
+
+                    int new_x = x + j;
+                    int new_y = y + k;
+                    if(new_x < 0 || new_y < 0 || new_x >= width || new_y >= height){
+                        continue;
+                    }
+
+                    if(region_id(new_y,new_x) != current_region_id){
+                        continue;
+                    }
+
+                    if(visited(new_y,new_x) == 1){
+                        continue;
+                    }
+
+                    new_boundary(new_boundary_size,0) = new_x;
+                    new_boundary(new_boundary_size,1) = new_y;
+                    new_boundary_size = new_boundary_size + 1;
+                    visited(new_y,new_x) = 1;
+                    tangent(new_y,new_x) = tangent(y,x);
+                }
+            }
+        }
+        // my_show(new_boundary,new_boundary_size);
+        current_boundary = new_boundary.clone();
+        current_boundary_size = new_boundary_size;
+        // if no boundary points found, exit
+        if(new_boundary_size == 0){
+            break;
+        }
+    }
+}
+
+
+void cal_tangent(const Mat_<int>& boundary, Mat_<Point2d> & tangent){
+    // tangent = Mat_<double>(boundary.size(),2);
+    int tangent_number = 6;
+    int boundary_point_number = boundary.rows;
+    for(int j = 0;j < boundary.rows;j++){
+        double tangent_x = 0;
+        double tangent_y = 0;
+        for(int k = 0;k < tangent_number;k++){
+            int index1 = (j + k) % boundary_point_number;
+            int index2 = (j + k + 1) % boundary_point_number;
+
+            double x = boundary(index2,0) - boundary(index1,0);
+            double y = boundary(index2,1) - boundary(index1,1);
+
+            // if(abs(x)<1e-10){
+                //angle = angle + PI/2;
+                // tangent_x += 0;
+                // tangent_y += 1;
+            // } else{
+                //angle = angle + atan(y/x);
+                double temp = sqrt(x*x + y*y);
+                tangent_x += x / temp;
+                tangent_y += y / temp;
+
+
+            index2 = (j - k + boundary_point_number) % boundary_point_number;
+            index1 = (j - k - 1 + boundary_point_number) % boundary_point_number;
+            x = boundary(index2,0) - boundary(index1,0);
+            y = boundary(index2,1) - boundary(index1,1);
+
+            // if(abs(x)<1e-10){
+                // tangent_x += 0;
+                // tangent_y += 1;
+            // } else{
+                temp = sqrt(x*x + y*y);
+                tangent_x += x / temp;
+                tangent_y += y / temp;
+        
+        }
+
+        double temp = sqrt(tangent_x*tangent_x + tangent_y*tangent_y);
+        tangent_x = tangent_x /temp;
+        tangent_y = tangent_y / temp;
+
+        // tangent(j,0) = tangent_x;
+        // tangent(j,1) = tangent_y; 
+        tangent(boundary(j,1),boundary(j,0)) = Point2d(tangent_x,tangent_y);
+
+        // cout<<tangent_x<<" "<<tangent_y<<endl;
+    }
+
+}
+
+
+
+
+
+int main(){
+    ifstream fin;
+    fin.open("./point.txt");
+    int id;
+    int point_number;
+    Mat image = imread("./test.jpg");
+    int width = image.cols;
+    int height = image.rows;
+
+    int count = 0;
+
+    while(fin>>id>>point_number){
+        cout<<point_number<<endl;
+        vector<Point2f> point_list; 
+        for(int i = 0;i < point_number;i++){
+            int x = 0;
+            int y = 0;
+            fin>>x>>y;
+            point_list.push_back(Point2f(x,y));        
+        }
+
+        if(count == 0){
+            count++;
+            continue;
+        } 
+
+
+        vector<vector<Point> > contours;
+        vector<Vec4i> hierarchy;
+        Mat src = Mat::zeros( Size(width,height), CV_8UC1 );
+        for( int j = 0; j < point_list.size(); j++ ){ 
+            line( src, point_list[j],  point_list[(j+1)%point_list.size()], Scalar( 255 ), 3, 8 ); 
+        } 
+
+
+        findContours(src, contours, hierarchy, RETR_TREE, CHAIN_APPROX_SIMPLE);
+
+        Mat_<int> region_id(height,width,0); 
+
+        for(int i = 0;i < height;i++){
+            for(int j = 0;j < width;j++){
+                double inside = pointPolygonTest(contours[0], Point2f(j,i), false);
+                if(inside >= 0){
+                    region_id(i,j) = 1;
+                }
+                else{
+                    region_id(i,j) = 0;
+                } 
+            }
+        }
+        Mat_<int> boundary(point_list.size(),2);
+
+        for(int i = 0;i < point_list.size();i++){
+            boundary(i,0) = point_list[i].x;
+            boundary(i,1) = point_list[i].y;  
+        }
+
+
+        Mat_<Point2d> tangent(height,width,Point2d(0,0));
+
+        cal_tangent(boundary,tangent);
+        
+        /*
+           for(int i = 0;i < boundary.rows;i = i + 10){
+           double x_cor = boundary(i,0);
+           double y_cor = boundary(i,1);
+           double x = tangent(y_cor,x_cor).x;
+           double y = tangent(y_cor,x_cor).y;
+           double end_x = x_cor + 10 * x / sqrt(x*x+y*y);
+           double end_y = y_cor + 10 * y / sqrt(x*x+y*y);
+           
+           cout<<x<<" "<<y<<endl;
+           line(src,Point2d(x_cor,y_cor),Point2d(end_x,end_y),Scalar(255),3,8); 
+           imshow("src",src);
+           waitKey(5);
+           }
+           */
+
+
+        calculate_tangent(image,boundary,region_id,1,tangent);
+
+        for(int i = 0;i < width;i=i+20){
+            for(int j = 0;j < height;j=j+20){
+                if(region_id(j,i) == 1){
+                    double x = tangent(j,i).x;
+                    double y = tangent(j,i).y;
+                    double end_x = i + 10 * x / sqrt(x*x+y*y);
+                    double end_y = j + 10 * y / sqrt(x*x+y*y);
+                    cout<<i<<" "<<j<<" "<<" "<<x<<y<<endl;
+                    line(src,Point2d(i,j),Point2d(end_x,end_y),Scalar(255),1,8);
+
+                    Point2d pStart(i,j);
+                    Point2d pEnd(end_x,end_y); 
+                    Point arrow;
+                    int len = 4;
+                    int alpha = 15;
+                    double angle = atan2((double)(pStart.y - pEnd.y), (double)(pStart.x - pEnd.x));  
+                    arrow.x = pEnd.x + len * cos(angle + PI * alpha / 180);     
+                    arrow.y = pEnd.y + len * sin(angle + PI * alpha / 180);  
+                    line(src, pEnd, arrow, Scalar(255), 1, 8);
+                    arrow.x = pEnd.x + len * cos(angle - PI * alpha / 180);     
+                    arrow.y = pEnd.y + len * sin(angle - PI * alpha / 180);    
+                    line(src, pEnd, arrow, Scalar(255), 1, 8);
+
+
+                    // imshow("src",src); 
+                    // waitKey(0);
+                } 
+            }
+        }    
+        imshow("src",src); 
+        waitKey(0);
+    } 
+
+    return 0;
+
+}
+
+
