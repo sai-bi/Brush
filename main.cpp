@@ -13,190 +13,15 @@ using namespace cv;
 
 
 
-Mat_<double> place_brush(const Mat& input_image, const Mat_<double>& tangent,
+Mat_<double> place_brush(const Mat& input_image, const Mat_<Point2d>& inner_tangent,
         const Mat_<int>& boundary, const Mat_<int>& region_id,
-        double major_axis, double minor_axis, int current_region_id){ 
+        double major_axis, double minor_axis, const Mat_<int>& current_region_point){ 
     // calculate the direction of each pixel
     int width = input_image.cols;
     int height = input_image.rows;
+    
 
-
-    Mat_<int> current_region_point(width * height, 2);
-
-    Mat_<Vec2d> inner_tangent(height,width,Vec2d(0,0));
-    Mat_<int> inner_tangent_number(height,width);
-
-    int region_point_number = 0;
-
-    for(int i = 0;i < height;i++){
-        for(int j = 0;j < width;j++){
-            if(region_id(i,j) == current_region_id){
-                current_region_point(region_point_number,0) = j; 
-                current_region_point(region_point_number,1) = i;
-                region_point_number++;
-            } 
-            inner_tangent(i,j)[0] = 1/sqrt(2.0);
-            inner_tangent(i,j)[1] = -1/sqrt(2.0);
-            inner_tangent_number(i,j) = 0;
-        }
-    }
-
-    // calculate the tangent of each pixel
-    vector<vector<double> > reach(width*height);
-    vector<vector<Point2d> > reach_tangent(width * height);
-
-    for(int i = 0;i < boundary.rows;i++){
-        double x = boundary(i,0);
-        double y = boundary(i,1);
-        // double curr_tangent = tangent(i);
-        double curr_tangent_x = tangent(i,0);
-        double curr_tangent_y = tangent(i,1);
-        // double perpendicular = -1 / curr_tangent;
-        double perpendicular_x = - curr_tangent_y;
-        double perpendicular_y = curr_tangent_x;
-
-
-        double new_x = x;
-        double new_y = y;
-
-        double norm_value = sqrt(curr_tangent_x * curr_tangent_x + curr_tangent_y * curr_tangent_y);
-        curr_tangent_x = curr_tangent_x / norm_value;
-        curr_tangent_y = curr_tangent_y / norm_value;
-
-        inner_tangent((int)y,(int)x)[0] = curr_tangent_x; 
-        inner_tangent((int)y,(int)x)[1] = curr_tangent_y;
-        inner_tangent_number((int)y,(int)x) = 1;
-
-        while(true){
-            if(abs(perpendicular_x) < 1e-10){
-                new_x = new_x;
-                new_y = new_y + 1;
-
-            } else{
-                new_x = new_x + 1;
-                new_y = new_y + perpendicular_y / perpendicular_x;
-            }
-            //cout<<new_x<<" "<<new_y<<endl;
-            if(new_x >= width || new_y >= height || new_x < 0 || new_y < 0)
-                break;
-
-            if(region_id((int)new_y,(int)new_x) != current_region_id)
-                break;
-
-
-            /*
-               double angle = 0;
-               if(abs(curr_tangent_x) < 1e-10){
-               angle = PI/2;
-               }
-               else{
-               angle = atan(curr_tangent_y / curr_tangent_x);
-               if(angle < 0){
-               angle = angle +	PI;
-               }
-               }
-               */
-
-            inner_tangent((int)new_y,(int)new_x)[0] += curr_tangent_x;
-            inner_tangent((int)new_y,(int)new_x)[1] += curr_tangent_y; 
-            inner_tangent_number((int)new_y,(int)new_x) += 1;
-            double dist = 1.0/sqrt(pow(new_x-x,2.0) + pow(new_y-y,2.0));
-            if(dist > 1e10){
-                cout<<"dist is infinite"<<endl;
-            }
-            reach[((int)new_y)*width + (int)new_x].push_back(dist);
-            //cout<<inner_tangent_number((int)new_y,(int)new_x)<<endl;
-            reach_tangent[((int)new_y)*width + (int)new_x].push_back(Point2d(curr_tangent_x,curr_tangent_y));
-
-        }
-        new_x = x;
-        new_y = y;
-        while(true){
-            if(abs(perpendicular_x) < 1e-10){
-                new_x = new_x;
-                new_y = new_y - 1;
-
-            } else{
-                new_x = new_x - 1;
-                new_y = new_y - perpendicular_y / perpendicular_x;
-            }
-            if(new_x >= width || new_y >= height || new_x < 0 || new_y < 0)
-                break;
-            if(region_id((int)new_y,(int)new_x) != current_region_id)
-                break;
-
-            /*
-               double angle = 0;
-               if(abs(curr_tangent_x) < 1e-10){
-               angle = PI/2;
-               }
-               else{
-               angle = atan(curr_tangent_y / curr_tangent_x);
-               if(angle < 0){
-               angle = angle +	PI;
-               }
-               }
-               */
-            inner_tangent((int)new_y,(int)new_x)[0] += curr_tangent_x;
-            inner_tangent((int)new_y,(int)new_x)[1] += curr_tangent_y; 
-            inner_tangent_number((int)new_y,(int)new_x) += 1;
-            double dist = 1.0/sqrt(pow(new_x-x,2.0) + pow(new_y-y,2.0));
-            if(dist > 1e10){
-                cout<<"dist is infinite"<<endl;
-            }
-            reach[((int)new_y)*width + (int)new_x].push_back(dist);
-            reach_tangent[((int)new_y)*width + (int)new_x].push_back(Point2d(curr_tangent_x,curr_tangent_y));
-            //cout<<inner_tangent_number((int)new_y,(int)new_x)<<endl;
-        }
-    } 
-
-    for(int i = 0;i < height;i++){
-        for(int j = 0;j < width;j++){
-            if(inner_tangent_number(i,j) == 0){
-                inner_tangent(i,j)[0] = 1/sqrt(2.0);
-                inner_tangent(i,j)[1] = -1/sqrt(2.0);
-                continue;
-            }
-            if(inner_tangent_number(i,j) == 1){
-                //cout<<inner_tangent(i,j)[0]<<" "<<inner_tangent(i,j)[1]<<endl;
-                continue;
-            }
-            //double angle = inner_tangent(i,j)[0] / inner_tangent_number(i,j);
-            //double angle = 0;
-            //inner_tangent(i,j)[0] /= inner_tangent_number(i,j);
-            //inner_tangent(i,j)[1] /= inner_tangent_number(i,j);
-
-            double sum = 0;
-            for(int k = 0;k < reach[i*width+j].size();k++){
-                sum = sum + reach[i*width+j][k];
-            }
-            /*
-               if(abs(sum) < 1e-10){
-               cout<<"sum is 0"<<endl;
-               }
-               else if(sum > 1e10){
-               cout<<"sum is infinite"<<endl;
-               }
-               */
-            double temp_x = 0;
-            double temp_y = 0;
-            for(int k = 0;k < reach[i*width+j].size();k++){
-                //= angle + reach[i*width+j][k] / sum * inner_tangent(i,j)[0];
-                temp_x = temp_x + reach_tangent[i*width+j][k].x * reach[i*width + j][k] / sum;
-                temp_y = temp_y + reach_tangent[i*width+j][k].y * reach[i*width + j][k] / sum;
-            }
-
-            //double x = inner_tangent(i,j)[0];
-            //double y = inner_tangent(i,j)[1];
-            double temp = sqrt(temp_x*temp_x + temp_y*temp_y);
-
-            inner_tangent(i,j)[0] = temp_x / temp;
-            inner_tangent(i,j)[1] = temp_y / temp;
-
-            //cout<<inner_tangent(i,j)[0]<<" "<<inner_tangent(i,j)[1]<<endl;
-        }
-    }
-
+    int region_point_number = current_region_point.rows;
     // random seed
 
     int seed_number = 1.3 * region_point_number / (PI * major_axis * minor_axis);
@@ -212,8 +37,8 @@ Mat_<double> place_brush(const Mat& input_image, const Mat_<double>& tangent,
         for(int j = 0;j < i;j++){
             int seed_x = seed_point(j,0);
             int seed_y = seed_point(j,1);
-            double seed_tangent_x = inner_tangent(seed_y,seed_x)[0];
-            double seed_tangent_y = inner_tangent(seed_y,seed_x)[1]; 
+            double seed_tangent_x = inner_tangent(seed_y,seed_x).x;
+            double seed_tangent_y = inner_tangent(seed_y,seed_x).y; 
             double dist = sqrt(pow(temp_x - seed_x,2.0) + pow(temp_y - seed_y,2.0));
 
             Point2d temp1(temp_x - seed_x,temp_y - seed_y);
@@ -234,22 +59,10 @@ Mat_<double> place_brush(const Mat& input_image, const Mat_<double>& tangent,
             // break;
             continue;
         }
-        double curr_tangent_x = inner_tangent((int)temp_y,(int)temp_x)[0];
-        double curr_tangent_y = inner_tangent((int)temp_y,(int)temp_x)[1];
+        double curr_tangent_x = inner_tangent((int)temp_y,(int)temp_x).x;
+        double curr_tangent_y = inner_tangent((int)temp_y,(int)temp_x).y;
         double angle = atan(curr_tangent_y / curr_tangent_x);
-        /*
-           if(angle < 0)
-           angle = angle + PI;
-           angle = angle * 180 / PI;
-           cout<<curr_tangent_x<<"  "<<curr_tangent_y<<endl;
-           cout<<angle<<endl;
-           */
 
-        //ellipse(test_image,Point2d(temp_x,temp_y),Size(major_axis,minor_axis),angle,0,360,Scalar(0,0,255));
-        //circle(test_image, Point2d(temp_x,temp_y),3,Scalar(255,0,0));
-
-        //imshow("seed",test_image);
-        //waitKey(5);
 
         seed_point(i,0) = temp_x;
         seed_point(i,1) = temp_y;    
@@ -284,8 +97,8 @@ Mat_<double> place_brush(const Mat& input_image, const Mat_<double>& tangent,
             for(int j = 0;j < seed_number;j++){
                 int seed_x = seed_point(j,0);
                 int seed_y = seed_point(j,1);
-                double seed_tangent_x = inner_tangent(seed_y,seed_x)[0];
-                double seed_tangent_y = inner_tangent(seed_y,seed_x)[1]; 
+                double seed_tangent_x = inner_tangent(seed_y,seed_x).x;
+                double seed_tangent_y = inner_tangent(seed_y,seed_x).y; 
                 double dist = sqrt(pow(temp_x - seed_x,2.0) + pow(temp_y - seed_y,2.0));
 
                 Point2d temp1(temp_x - seed_x,temp_y - seed_y);
@@ -350,18 +163,9 @@ Mat_<double> place_brush(const Mat& input_image, const Mat_<double>& tangent,
             }
 
 
-            double tangen_x = inner_tangent((int)y,(int)x)[0];
-            double tangen_y = inner_tangent((int)y,(int)x)[1];
-            /*
-               double angle = atan(tangen_y / tangen_x);
-            //cout<<"wow"<< angle<<endl;
-            if(angle < 0)
-            angle = angle + PI;
-            angle = angle * 180 / PI;
-            cout<<"hello"<<angle<<endl;
-            */
-            //cout<<tangen_x<<" "<<tangen_y<<" hello"<<endl;
-            //ellipse(temp_image,Point2d(x,y),Size(major_axis,minor_axis),angle,0,360,Scalar(255,255,255),3);
+            double tangen_x = inner_tangent((int)y,(int)x).x;
+            double tangen_y = inner_tangent((int)y,(int)x).y;
+
             circle(temp_image, Point2d(x,y),5,Scalar(255,255,255));
             double end_x = x;
             double end_y = y;
@@ -374,34 +178,11 @@ Mat_<double> place_brush(const Mat& input_image, const Mat_<double>& tangent,
                 end_y = y +  10 * tangen_y / sqrt(tangen_x*tangen_x + tangen_y*tangen_y);
             }
             line(temp_image,Point2d(x,y),Point2d(end_x,end_y),Scalar(255,255,255),3);
-
-            /*
-               for(int j = 0;j < reach[width *(int)y + (int)x].size();j++){
-               double temp_x = reach[width *(int)y + (int)x][j].x;
-               double temp_y = reach[width *(int)y + (int)x][j].y;
-               double tangen_x = inner_tangent((int)temp_y,(int)temp_x)[0];
-               double tangen_y = inner_tangent((int)temp_y,(int)temp_x)[1];
-               if(abs(tangen_x) < 1e-10){
-               cout<<"hello 0"<<endl;
-               }
-
-               double angle = atan(tangen_y / tangen_x);
-            //cout<<"wow"<< angle<<endl;
-            if(angle < 0)
-            angle = angle + PI;
-            angle = angle * 180 / PI;
-            cout<<angle<<" ";
-            }
-            */
-
-
-
-
         }
 
 
         imshow("result",temp_image);
-        waitKey(5);
+        waitKey(0);
         cout<<difference<<endl;
 
         if(difference < threshold){
@@ -415,8 +196,8 @@ Mat_<double> place_brush(const Mat& input_image, const Mat_<double>& tangent,
     for(int i = 0;i < seed_number;i++){
         result(i,0) = seed_point(i,0);
         result(i,1) = seed_point(i,1);
-        result(i,2) = inner_tangent((int)seed_point(i,1),(int)seed_point(i,0))[0]; 
-        result(i,3) = inner_tangent((int)seed_point(i,1),(int)seed_point(i,0))[1]; 
+        result(i,2) = inner_tangent((int)seed_point(i,1),(int)seed_point(i,0)).x; 
+        result(i,3) = inner_tangent((int)seed_point(i,1),(int)seed_point(i,0)).y; 
     }
 
     return result;
@@ -592,7 +373,7 @@ void cal_tangent(const Mat_<int>& boundary, Mat_<Point2d> & tangent){
             Mat src = Mat::zeros( Size(width,height), CV_8UC1 );
 
 
-            while(iter_num< 20){
+            while(iter_num< 100){
                 Mat_<double> new_tangent_angle = tangent_angle.clone();
                 // Mat_<Point2d> new_tangent(height,width,Point2d(0,0));
                 for(int i = 0;i < width;i++){
@@ -601,7 +382,7 @@ void cal_tangent(const Mat_<int>& boundary, Mat_<Point2d> & tangent){
                             continue;
                         } 
 
-                        int neighbour_num = 1; 
+                        int neighbour_num = 2; 
                         double delta_theta = 0;
                         int count = 0;
                         for(int p = -neighbour_num;p < neighbour_num + 1;p++){
@@ -651,14 +432,15 @@ void cal_tangent(const Mat_<int>& boundary, Mat_<Point2d> & tangent){
 
         int main(){
             ifstream fin;
-            fin.open("./point.txt");
+            // fin.open("./point.txt");
+            fin.open("./imgimg.txt");
             int id;
             int point_number;
-            Mat image = imread("./test.jpg");
+            Mat image = imread("./img14.jpg");
             int width = image.cols;
             int height = image.rows;
 
-            int count = 0;
+            // int count = 0;
 
             while(fin>>id>>point_number){
                 cout<<point_number<<endl;
@@ -670,10 +452,10 @@ void cal_tangent(const Mat_<int>& boundary, Mat_<Point2d> & tangent){
                     point_list.push_back(Point2f(x,y));        
                 }
 
-                if(count == 0){
-                    count++;
-                    continue;
-                } 
+                // if(count == 0){
+                    // count++;
+                    // continue;
+                // } 
 
 
                 vector<vector<Point> > contours;
@@ -688,11 +470,14 @@ void cal_tangent(const Mat_<int>& boundary, Mat_<Point2d> & tangent){
 
                 Mat_<int> region_id(height,width,0); 
 
+                int region_point_number = 0;
+
                 for(int i = 0;i < height;i++){
                     for(int j = 0;j < width;j++){
                         double inside = pointPolygonTest(contours[0], Point2f(j,i), false);
                         if(inside >= 0){
                             region_id(i,j) = 1;
+                            region_point_number = region_point_number + 1;
                         }
                         else{
                             region_id(i,j) = 0;
@@ -711,21 +496,6 @@ void cal_tangent(const Mat_<int>& boundary, Mat_<Point2d> & tangent){
 
                 cal_tangent(boundary,tangent);
 
-                /*
-                   for(int i = 0;i < boundary.rows;i = i + 10){
-                   double x_cor = boundary(i,0);
-                   double y_cor = boundary(i,1);
-                   double x = tangent(y_cor,x_cor).x;
-                   double y = tangent(y_cor,x_cor).y;
-                   double end_x = x_cor + 10 * x / sqrt(x*x+y*y);
-                   double end_y = y_cor + 10 * y / sqrt(x*x+y*y);
-
-                   cout<<x<<" "<<y<<endl;
-                   line(src,Point2d(x_cor,y_cor),Point2d(end_x,end_y),Scalar(255),3,8); 
-                   imshow("src",src);
-                   waitKey(5);
-                   }
-                   */
 
 
                 calculate_tangent(image,boundary,region_id,1,tangent);
@@ -753,15 +523,35 @@ void cal_tangent(const Mat_<int>& boundary, Mat_<Point2d> & tangent){
                             arrow.x = pEnd.x + len * cos(angle - PI * alpha / 180);     
                             arrow.y = pEnd.y + len * sin(angle - PI * alpha / 180);    
                             line(src, pEnd, arrow, Scalar(255), 1, 8);
-
-
-                            // imshow("src",src); 
-                            // waitKey(0);
                         } 
                     }
-                }    
+                }
+
                 imshow("src",src); 
                 waitKey(0);
+                // continue; 
+                // int choice;
+                // cin>>choice;
+                // if(choice != 1){
+                    // continue;
+                // }
+
+                Mat_<int> current_region_point(region_point_number,2);
+                int count = 0;
+                for(int i = 0;i < width;i++){
+                    for(int j = 0;j < height;j++){
+                        if(region_id(j,i) == 1){
+                            current_region_point(count,0) = i;
+                            current_region_point(count,1) = j;
+                            count++;
+                        }
+                    }
+                } 
+
+                                
+                place_brush(image,tangent,boundary,region_id,50,10,current_region_point);
+                
+
             } 
 
             return 0;
