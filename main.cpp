@@ -584,12 +584,15 @@ void cal_tangent(const Mat_<int>& boundary, Mat_<Point2d> & tangent){
                     else{
                         angle = atan(temp.y / temp.x);
                     }
-                    tangent_angle(j,i) = angle * 2;
+                    tangent_angle(j,i) = angle;
                 }
             } 
 
             int iter_num = 0; 
-            while(iter_num< 100){
+            Mat src = Mat::zeros( Size(width,height), CV_8UC1 );
+
+
+            while(iter_num< 20){
                 Mat_<double> new_tangent_angle = tangent_angle.clone();
                 // Mat_<Point2d> new_tangent(height,width,Point2d(0,0));
                 for(int i = 0;i < width;i++){
@@ -598,12 +601,16 @@ void cal_tangent(const Mat_<int>& boundary, Mat_<Point2d> & tangent){
                             continue;
                         } 
 
-                        int neighbour_num = 3; 
+                        int neighbour_num = 1; 
                         double delta_theta = 0;
+                        int count = 0;
                         for(int p = -neighbour_num;p < neighbour_num + 1;p++){
                             for(int k = -neighbour_num;k < neighbour_num+1;k++){
                                 int x = i + p;
                                 int y = j + k;
+                                if(p == 0 && k == 0){
+                                    continue;
+                                }
                                 if(x < 0 || y < 0 || x >= width || y >= height){
                                     continue;
                                 }
@@ -611,27 +618,33 @@ void cal_tangent(const Mat_<int>& boundary, Mat_<Point2d> & tangent){
                                     continue;
                                 }
 
-                                delta_theta = delta_theta + sin(tangent_angle(y,x) - tangent_angle(j,i));         
+                                // delta_theta = delta_theta + sin(tangent_angle(y,x) - tangent_angle(j,i));         
+                                double temp = tangent_angle(y,x) - tangent_angle(j,i);
+                                count++;
+                                if(temp > PI/2){
+                                    temp = PI - temp;
+                                }
+                                delta_theta = delta_theta + temp;
                             } 
                         }
 
-                        new_tangent_angle(j,i) += delta_theta; 
+                        if(count == 0)
+                            continue;
+                        new_tangent_angle(j,i) += delta_theta/count;
                     } 
                 }
-
-                tangent_angle = new_tangent_angle.clone();
                 iter_num++;
+                tangent_angle = new_tangent_angle.clone();
             }
-
             for(int i = 0; i < width;i++){
                 for(int j = 0;j < height;j++){
                     if(region_id(j,i) != current_region_id){
                         continue;
                     }
-                    tangent(j,i).x = cos(tangent_angle(j,i) / 2);
-                    tangent(j,i).y = sin(tangent_angle(j,i) / 2); 
+                    tangent(j,i).x = cos(tangent_angle(j,i));
+                    tangent(j,i).y = sin(tangent_angle(j,i)); 
                 }
-            }
+            } 
 
         }
 
