@@ -300,12 +300,7 @@ void cal_tangent(const Mat_<int>& boundary, Mat_<Point2d> & tangent){
             double x = boundary(index2,0) - boundary(index1,0);
             double y = boundary(index2,1) - boundary(index1,1);
 
-            // if(abs(x)<1e-10){
-            //angle = angle + PI/2;
-            // tangent_x += 0;
-            // tangent_y += 1;
-            // } else{
-            //angle = angle + atan(y/x);
+
             double temp = sqrt(x*x + y*y);
             tangent_x += x / temp;
             tangent_y += y / temp;
@@ -316,10 +311,7 @@ void cal_tangent(const Mat_<int>& boundary, Mat_<Point2d> & tangent){
             x = boundary(index2,0) - boundary(index1,0);
             y = boundary(index2,1) - boundary(index1,1);
 
-            // if(abs(x)<1e-10){
-            // tangent_x += 0;
-            // tangent_y += 1;
-            // } else{
+
             temp = sqrt(x*x + y*y);
             tangent_x += x / temp;
             tangent_y += y / temp;
@@ -334,13 +326,13 @@ void cal_tangent(const Mat_<int>& boundary, Mat_<Point2d> & tangent){
         // tangent(j,1) = tangent_y; 
         tangent(boundary(j,1),boundary(j,0)) = Point2d(tangent_x,tangent_y);
 
-        // cout<<tangent_x<<" "<<tangent_y<<endl;
         }
         }
 
 
 
-        void smooth_tangent(Mat_<Point2d>& tangent, const Mat_<int> region_id,int current_region_id){
+        void smooth_tangent(Mat_<Point2d>& tangent, const Mat_<int> region_id,int current_region_id,
+                const Mat_<double>& dist){
             int width = tangent.cols;
             int height = tangent.rows;
 
@@ -352,7 +344,8 @@ void cal_tangent(const Mat_<int>& boundary, Mat_<Point2d> & tangent){
                         continue;
                     }
                     Point2d temp = tangent(j,i);
-                    // double angle = atan2(temp.y,temp.x); 
+                    
+                    
                     double angle = 0;
                     if(abs(temp.x) < 1e-10){
                         if(temp.y > 0){
@@ -373,16 +366,21 @@ void cal_tangent(const Mat_<int>& boundary, Mat_<Point2d> & tangent){
             Mat src = Mat::zeros( Size(width,height), CV_8UC1 );
 
 
-            while(iter_num< 100){
+            while(iter_num< 20){
                 Mat_<double> new_tangent_angle = tangent_angle.clone();
                 // Mat_<Point2d> new_tangent(height,width,Point2d(0,0));
                 for(int i = 0;i < width;i++){
                     for(int j = 0;j < height;j++){
                         if(region_id(j,i) != current_region_id){
                             continue;
-                        } 
+                        }
+                        if(abs(dist(j,i)) < 1e-10){
+                            continue;
+                        }
+                    
 
-                        int neighbour_num = 2; 
+
+                        int neighbour_num = 3; 
                         double delta_theta = 0;
                         int count = 0;
                         for(int p = -neighbour_num;p < neighbour_num + 1;p++){
@@ -392,6 +390,8 @@ void cal_tangent(const Mat_<int>& boundary, Mat_<Point2d> & tangent){
                                 if(p == 0 && k == 0){
                                     continue;
                                 }
+                                
+
                                 if(x < 0 || y < 0 || x >= width || y >= height){
                                     continue;
                                 }
@@ -399,7 +399,6 @@ void cal_tangent(const Mat_<int>& boundary, Mat_<Point2d> & tangent){
                                     continue;
                                 }
 
-                                // delta_theta = delta_theta + sin(tangent_angle(y,x) - tangent_angle(j,i));         
                                 double temp = tangent_angle(y,x) - tangent_angle(j,i);
                                 count++;
                                 if(temp > PI/2){
@@ -432,15 +431,16 @@ void cal_tangent(const Mat_<int>& boundary, Mat_<Point2d> & tangent){
 
         int main(){
             ifstream fin;
-            // fin.open("./point.txt");
-            fin.open("./imgimg.txt");
+            fin.open("./point.txt");
+            // fin.open("./imgimg.txt");
             int id;
             int point_number;
-            Mat image = imread("./img14.jpg");
+            Mat image = imread("./test.jpg");
             int width = image.cols;
             int height = image.rows;
 
             // int count = 0;
+            int num = 0;
 
             while(fin>>id>>point_number){
                 cout<<point_number<<endl;
@@ -451,11 +451,10 @@ void cal_tangent(const Mat_<int>& boundary, Mat_<Point2d> & tangent){
                     fin>>x>>y;
                     point_list.push_back(Point2f(x,y));        
                 }
-
-                // if(count == 0){
-                    // count++;
-                    // continue;
-                // } 
+                if(num == 0){
+                    num++;
+                    continue;
+                }
 
 
                 vector<vector<Point> > contours;
@@ -469,6 +468,7 @@ void cal_tangent(const Mat_<int>& boundary, Mat_<Point2d> & tangent){
                 findContours(src, contours, hierarchy, RETR_TREE, CHAIN_APPROX_SIMPLE);
 
                 Mat_<int> region_id(height,width,0); 
+                Mat_<double> dist(height,width,double(0));
 
                 int region_point_number = 0;
 
@@ -477,9 +477,11 @@ void cal_tangent(const Mat_<int>& boundary, Mat_<Point2d> & tangent){
                         double inside = pointPolygonTest(contours[0], Point2f(j,i), false);
                         if(inside >= 0){
                             region_id(i,j) = 1;
+                            dist(i,j) = inside;
                             region_point_number = region_point_number + 1;
                         }
                         else{
+                            dist(i,j) = inside;
                             region_id(i,j) = 0;
                         } 
                     }
@@ -499,7 +501,7 @@ void cal_tangent(const Mat_<int>& boundary, Mat_<Point2d> & tangent){
 
 
                 calculate_tangent(image,boundary,region_id,1,tangent);
-                smooth_tangent(tangent,region_id,1);
+                smooth_tangent(tangent,region_id,1,dist);
 
                 for(int i = 0;i < width;i=i+20){
                     for(int j = 0;j < height;j=j+20){
@@ -508,7 +510,7 @@ void cal_tangent(const Mat_<int>& boundary, Mat_<Point2d> & tangent){
                             double y = tangent(j,i).y;
                             double end_x = i + 10 * x / sqrt(x*x+y*y);
                             double end_y = j + 10 * y / sqrt(x*x+y*y);
-                            cout<<i<<" "<<j<<" "<<" "<<x<<y<<endl;
+                            // cout<<i<<" "<<j<<" "<<" "<<x<<y<<endl;
                             line(src,Point2d(i,j),Point2d(end_x,end_y),Scalar(255),1,8);
 
                             Point2d pStart(i,j);
@@ -529,12 +531,7 @@ void cal_tangent(const Mat_<int>& boundary, Mat_<Point2d> & tangent){
 
                 imshow("src",src); 
                 waitKey(0);
-                // continue; 
-                // int choice;
-                // cin>>choice;
-                // if(choice != 1){
-                    // continue;
-                // }
+
 
                 Mat_<int> current_region_point(region_point_number,2);
                 int count = 0;
