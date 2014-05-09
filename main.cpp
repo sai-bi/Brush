@@ -377,8 +377,6 @@ void cal_tangent(const Mat_<int>& boundary, Mat_<Point2d> & tangent){
                         if(abs(dist(j,i)) < 1e-10){
                             continue;
                         }
-                    
-
 
                         int neighbour_num = 3; 
                         double delta_theta = 0;
@@ -390,7 +388,6 @@ void cal_tangent(const Mat_<int>& boundary, Mat_<Point2d> & tangent){
                                 if(p == 0 && k == 0){
                                     continue;
                                 }
-                                
 
                                 if(x < 0 || y < 0 || x >= width || y >= height){
                                     continue;
@@ -401,8 +398,13 @@ void cal_tangent(const Mat_<int>& boundary, Mat_<Point2d> & tangent){
 
                                 double temp = tangent_angle(y,x) - tangent_angle(j,i);
                                 count++;
+                                
                                 if(temp > PI/2){
                                     temp = PI - temp;
+                                    temp = -temp;
+                                }
+                                else if(temp < -PI/2){
+                                    temp = PI + temp;    
                                 }
                                 delta_theta = delta_theta + temp;
                             } 
@@ -456,7 +458,7 @@ void cal_tangent(const Mat_<int>& boundary, Mat_<Point2d> & tangent){
                     continue;
                 }
 
-
+            
                 vector<vector<Point> > contours;
                 vector<Vec4i> hierarchy;
                 Mat src = Mat::zeros( Size(width,height), CV_8UC1 );
@@ -497,8 +499,6 @@ void cal_tangent(const Mat_<int>& boundary, Mat_<Point2d> & tangent){
                 Mat_<Point2d> tangent(height,width,Point2d(0,0));
 
                 cal_tangent(boundary,tangent);
-
-
 
                 calculate_tangent(image,boundary,region_id,1,tangent);
                 smooth_tangent(tangent,region_id,1,dist);
