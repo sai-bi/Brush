@@ -366,7 +366,7 @@ void cal_tangent(const Mat_<int>& boundary, Mat_<Point2d> & tangent){
             Mat src = Mat::zeros( Size(width,height), CV_8UC1 );
 
 
-            while(iter_num< 20){
+            while(iter_num< 50){
                 Mat_<double> new_tangent_angle = tangent_angle.clone();
                 // Mat_<Point2d> new_tangent(height,width,Point2d(0,0));
                 for(int i = 0;i < width;i++){
@@ -433,11 +433,12 @@ void cal_tangent(const Mat_<int>& boundary, Mat_<Point2d> & tangent){
 
         int main(){
             ifstream fin;
-            fin.open("./point.txt");
-            // fin.open("./imgimg.txt");
+            // fin.open("./point.txt");
+            fin.open("./imgimg.txt");
             int id;
             int point_number;
-            Mat image = imread("./test.jpg");
+            // Mat image = imread("./test.jpg");
+            Mat image = imread("./img14.jpg");
             int width = image.cols;
             int height = image.rows;
 
@@ -453,10 +454,10 @@ void cal_tangent(const Mat_<int>& boundary, Mat_<Point2d> & tangent){
                     fin>>x>>y;
                     point_list.push_back(Point2f(x,y));        
                 }
-                if(num == 0){
-                    num++;
-                    continue;
-                }
+                // if(num == 0)
+                    // num++;
+                    // continue;
+                // }
 
             
                 vector<vector<Point> > contours;
