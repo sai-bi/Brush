@@ -19,7 +19,7 @@ Mat_<double> place_brush(const Mat& input_image, const Mat_<Point2d>& inner_tang
     // calculate the direction of each pixel
     int width = input_image.cols;
     int height = input_image.rows;
-    
+
 
     int region_point_number = current_region_point.rows;
     // random seed
@@ -326,234 +326,231 @@ void cal_tangent(const Mat_<int>& boundary, Mat_<Point2d> & tangent){
         // tangent(j,1) = tangent_y; 
         tangent(boundary(j,1),boundary(j,0)) = Point2d(tangent_x,tangent_y);
 
-        }
-        }
+    }
+}
 
 
 
-        void smooth_tangent(Mat_<Point2d>& tangent, const Mat_<int> region_id,int current_region_id,
-                const Mat_<double>& dist){
-            int width = tangent.cols;
-            int height = tangent.rows;
+void smooth_tangent(Mat_<Point2d>& tangent, const Mat_<int> region_id,int current_region_id,
+        const Mat_<double>& dist){
+    int width = tangent.cols;
+    int height = tangent.rows;
 
-            Mat_<double> tangent_angle(height,width,double(0));
+    Mat_<double> tangent_angle(height,width,double(0));
 
-            for(int i = 0;i < width;i++){
-                for(int j = 0;j < height;j++){
-                    if(region_id(j,i) != current_region_id){
-                        continue;
-                    }
-                    Point2d temp = tangent(j,i);
-                    
-                    
-                    double angle = 0;
-                    if(abs(temp.x) < 1e-10){
-                        if(temp.y > 0){
-                            angle = PI/2;
-                        }
-                        else{
-                            angle = -PI/2;
-                        }
-                    }
-                    else{
-                        angle = atan(temp.y / temp.x);
-                    }
-                    tangent_angle(j,i) = angle;
+    for(int i = 0;i < width;i++){
+        for(int j = 0;j < height;j++){
+            if(region_id(j,i) != current_region_id){
+                continue;
+            }
+            Point2d temp = tangent(j,i);
+
+
+            double angle = 0;
+            if(abs(temp.x) < 1e-10){
+                if(temp.y > 0){
+                    angle = PI/2;
                 }
-            } 
+                else{
+                    angle = -PI/2;
+                }
+            }
+            else{
+                angle = atan(temp.y / temp.x);
+            }
+            tangent_angle(j,i) = angle;
+        }
+    } 
 
-            int iter_num = 0; 
-            Mat src = Mat::zeros( Size(width,height), CV_8UC1 );
+    int iter_num = 0; 
+    Mat src = Mat::zeros( Size(width,height), CV_8UC1 );
 
 
-            while(iter_num< 50){
-                Mat_<double> new_tangent_angle = tangent_angle.clone();
-                // Mat_<Point2d> new_tangent(height,width,Point2d(0,0));
-                for(int i = 0;i < width;i++){
-                    for(int j = 0;j < height;j++){
-                        if(region_id(j,i) != current_region_id){
+    while(iter_num< 50){
+        Mat_<double> new_tangent_angle = tangent_angle.clone();
+        // Mat_<Point2d> new_tangent(height,width,Point2d(0,0));
+        for(int i = 0;i < width;i++){
+            for(int j = 0;j < height;j++){
+                if(region_id(j,i) != current_region_id){
+                    continue;
+                }
+                if(abs(dist(j,i)) < 1e-10){
+                    continue;
+                }
+
+                int neighbour_num = 3; 
+                double delta_theta = 0;
+                int count = 0;
+                for(int p = -neighbour_num;p < neighbour_num + 1;p++){
+                    for(int k = -neighbour_num;k < neighbour_num+1;k++){
+                        int x = i + p;
+                        int y = j + k;
+                        if(p == 0 && k == 0){
                             continue;
                         }
-                        if(abs(dist(j,i)) < 1e-10){
+
+                        if(x < 0 || y < 0 || x >= width || y >= height){
+                            continue;
+                        }
+                        if(region_id(y,x) != current_region_id){
                             continue;
                         }
 
-                        int neighbour_num = 3; 
-                        double delta_theta = 0;
-                        int count = 0;
-                        for(int p = -neighbour_num;p < neighbour_num + 1;p++){
-                            for(int k = -neighbour_num;k < neighbour_num+1;k++){
-                                int x = i + p;
-                                int y = j + k;
-                                if(p == 0 && k == 0){
-                                    continue;
-                                }
+                        double temp = tangent_angle(y,x) - tangent_angle(j,i);
+                        count++;
 
-                                if(x < 0 || y < 0 || x >= width || y >= height){
-                                    continue;
-                                }
-                                if(region_id(y,x) != current_region_id){
-                                    continue;
-                                }
-
-                                double temp = tangent_angle(y,x) - tangent_angle(j,i);
-                                count++;
-                                
-                                if(temp > PI/2){
-                                    temp = PI - temp;
-                                    temp = -temp;
-                                }
-                                else if(temp < -PI/2){
-                                    temp = PI + temp;    
-                                }
-                                delta_theta = delta_theta + temp;
-                            } 
+                        if(temp > PI/2){
+                            temp = PI - temp;
+                            temp = -temp;
                         }
-
-                        if(count == 0)
-                            continue;
-                        new_tangent_angle(j,i) += delta_theta/count;
+                        else if(temp < -PI/2){
+                            temp = PI + temp;    
+                        }
+                        delta_theta = delta_theta + temp;
                     } 
                 }
-                iter_num++;
-                tangent_angle = new_tangent_angle.clone();
+
+                if(count == 0)
+                    continue;
+                new_tangent_angle(j,i) += delta_theta/count;
+            } 
+        }
+        iter_num++;
+        tangent_angle = new_tangent_angle.clone();
+    }
+    for(int i = 0; i < width;i++){
+        for(int j = 0;j < height;j++){
+            if(region_id(j,i) != current_region_id){
+                continue;
             }
-            for(int i = 0; i < width;i++){
-                for(int j = 0;j < height;j++){
-                    if(region_id(j,i) != current_region_id){
-                        continue;
-                    }
-                    tangent(j,i).x = cos(tangent_angle(j,i));
-                    tangent(j,i).y = sin(tangent_angle(j,i)); 
-                }
-            } 
+            tangent(j,i).x = cos(tangent_angle(j,i));
+            tangent(j,i).y = sin(tangent_angle(j,i)); 
+        }
+    } 
 
+}
+
+
+int main(){
+    ifstream fin;
+    // fin.open("./point.txt");
+    fin.open("./imgimg.txt");
+    int id;
+    int point_number;
+    // Mat image = imread("./test.jpg");
+    Mat image = imread("./img14.jpg");
+    int width = image.cols;
+    int height = image.rows;
+
+    // int count = 0;
+    int num = 0;
+
+    while(fin>>id>>point_number){
+        cout<<point_number<<endl;
+        vector<Point2f> point_list; 
+        for(int i = 0;i < point_number;i++){
+            int x = 0;
+            int y = 0;
+            fin>>x>>y;
+            point_list.push_back(Point2f(x,y));        
         }
 
 
-        int main(){
-            ifstream fin;
-            // fin.open("./point.txt");
-            fin.open("./imgimg.txt");
-            int id;
-            int point_number;
-            // Mat image = imread("./test.jpg");
-            Mat image = imread("./img14.jpg");
-            int width = image.cols;
-            int height = image.rows;
 
-            // int count = 0;
-            int num = 0;
+        vector<vector<Point> > contours;
+        vector<Vec4i> hierarchy;
+        Mat src = Mat::zeros( Size(width,height), CV_8UC1 );
+        for( int j = 0; j < point_list.size(); j++ ){ 
+            line( src, point_list[j],  point_list[(j+1)%point_list.size()], Scalar( 255 ), 3, 8 ); 
+        } 
 
-            while(fin>>id>>point_number){
-                cout<<point_number<<endl;
-                vector<Point2f> point_list; 
-                for(int i = 0;i < point_number;i++){
-                    int x = 0;
-                    int y = 0;
-                    fin>>x>>y;
-                    point_list.push_back(Point2f(x,y));        
+
+        findContours(src, contours, hierarchy, RETR_TREE, CHAIN_APPROX_SIMPLE);
+
+        Mat_<int> region_id(height,width,0); 
+        Mat_<double> dist(height,width,double(0));
+
+        int region_point_number = 0;
+
+        for(int i = 0;i < height;i++){
+            for(int j = 0;j < width;j++){
+                double inside = pointPolygonTest(contours[0], Point2f(j,i), false);
+                if(inside >= 0){
+                    region_id(i,j) = 1;
+                    dist(i,j) = inside;
+                    region_point_number = region_point_number + 1;
                 }
-                // if(num == 0)
-                    // num++;
-                    // continue;
-                // }
-
-            
-                vector<vector<Point> > contours;
-                vector<Vec4i> hierarchy;
-                Mat src = Mat::zeros( Size(width,height), CV_8UC1 );
-                for( int j = 0; j < point_list.size(); j++ ){ 
-                    line( src, point_list[j],  point_list[(j+1)%point_list.size()], Scalar( 255 ), 3, 8 ); 
+                else{
+                    dist(i,j) = inside;
+                    region_id(i,j) = 0;
                 } 
-
-
-                findContours(src, contours, hierarchy, RETR_TREE, CHAIN_APPROX_SIMPLE);
-
-                Mat_<int> region_id(height,width,0); 
-                Mat_<double> dist(height,width,double(0));
-
-                int region_point_number = 0;
-
-                for(int i = 0;i < height;i++){
-                    for(int j = 0;j < width;j++){
-                        double inside = pointPolygonTest(contours[0], Point2f(j,i), false);
-                        if(inside >= 0){
-                            region_id(i,j) = 1;
-                            dist(i,j) = inside;
-                            region_point_number = region_point_number + 1;
-                        }
-                        else{
-                            dist(i,j) = inside;
-                            region_id(i,j) = 0;
-                        } 
-                    }
-                }
-                Mat_<int> boundary(point_list.size(),2);
-
-                for(int i = 0;i < point_list.size();i++){
-                    boundary(i,0) = point_list[i].x;
-                    boundary(i,1) = point_list[i].y;  
-                }
-
-
-                Mat_<Point2d> tangent(height,width,Point2d(0,0));
-
-                cal_tangent(boundary,tangent);
-
-                calculate_tangent(image,boundary,region_id,1,tangent);
-                smooth_tangent(tangent,region_id,1,dist);
-
-                for(int i = 0;i < width;i=i+20){
-                    for(int j = 0;j < height;j=j+20){
-                        if(region_id(j,i) == 1){
-                            double x = tangent(j,i).x;
-                            double y = tangent(j,i).y;
-                            double end_x = i + 10 * x / sqrt(x*x+y*y);
-                            double end_y = j + 10 * y / sqrt(x*x+y*y);
-                            // cout<<i<<" "<<j<<" "<<" "<<x<<y<<endl;
-                            line(src,Point2d(i,j),Point2d(end_x,end_y),Scalar(255),1,8);
-
-                            Point2d pStart(i,j);
-                            Point2d pEnd(end_x,end_y); 
-                            Point arrow;
-                            int len = 4;
-                            int alpha = 15;
-                            double angle = atan2((double)(pStart.y - pEnd.y), (double)(pStart.x - pEnd.x));  
-                            arrow.x = pEnd.x + len * cos(angle + PI * alpha / 180);     
-                            arrow.y = pEnd.y + len * sin(angle + PI * alpha / 180);  
-                            line(src, pEnd, arrow, Scalar(255), 1, 8);
-                            arrow.x = pEnd.x + len * cos(angle - PI * alpha / 180);     
-                            arrow.y = pEnd.y + len * sin(angle - PI * alpha / 180);    
-                            line(src, pEnd, arrow, Scalar(255), 1, 8);
-                        } 
-                    }
-                }
-
-                imshow("src",src); 
-                waitKey(0);
-
-
-                Mat_<int> current_region_point(region_point_number,2);
-                int count = 0;
-                for(int i = 0;i < width;i++){
-                    for(int j = 0;j < height;j++){
-                        if(region_id(j,i) == 1){
-                            current_region_point(count,0) = i;
-                            current_region_point(count,1) = j;
-                            count++;
-                        }
-                    }
-                } 
-
-                                
-                place_brush(image,tangent,boundary,region_id,50,10,current_region_point);
-                
-
-            } 
-
-            return 0;
-
+            }
         }
+        Mat_<int> boundary(point_list.size(),2);
+
+        for(int i = 0;i < point_list.size();i++){
+            boundary(i,0) = point_list[i].x;
+            boundary(i,1) = point_list[i].y;  
+        }
+
+
+        Mat_<Point2d> tangent(height,width,Point2d(0,0));
+
+        cal_tangent(boundary,tangent);
+
+        calculate_tangent(image,boundary,region_id,1,tangent);
+        smooth_tangent(tangent,region_id,1,dist);
+
+        for(int i = 0;i < width;i=i+20){
+            for(int j = 0;j < height;j=j+20){
+                if(region_id(j,i) == 1){
+                    double x = tangent(j,i).x;
+                    double y = tangent(j,i).y;
+                    double end_x = i + 10 * x / sqrt(x*x+y*y);
+                    double end_y = j + 10 * y / sqrt(x*x+y*y);
+                    // cout<<i<<" "<<j<<" "<<" "<<x<<y<<endl;
+                    line(src,Point2d(i,j),Point2d(end_x,end_y),Scalar(255),1,8);
+
+                    Point2d pStart(i,j);
+                    Point2d pEnd(end_x,end_y); 
+                    Point arrow;
+                    int len = 4;
+                    int alpha = 15;
+                    double angle = atan2((double)(pStart.y - pEnd.y), (double)(pStart.x - pEnd.x));  
+                    arrow.x = pEnd.x + len * cos(angle + PI * alpha / 180);     
+                    arrow.y = pEnd.y + len * sin(angle + PI * alpha / 180);  
+                    line(src, pEnd, arrow, Scalar(255), 1, 8);
+                    arrow.x = pEnd.x + len * cos(angle - PI * alpha / 180);     
+                    arrow.y = pEnd.y + len * sin(angle - PI * alpha / 180);    
+                    line(src, pEnd, arrow, Scalar(255), 1, 8);
+                } 
+            }
+        }
+
+        imshow("src",src); 
+        waitKey(0);
+
+
+        Mat_<int> current_region_point(region_point_number,2);
+        int count = 0;
+        for(int i = 0;i < width;i++){ 
+            for(int j = 0;j < height;j++){ 
+                if(region_id(j,i) == 1){ 
+                    current_region_point(count,0) = i; 
+                    current_region_point(count,1) = j; 
+                    count++; 
+                } 
+            } 
+        }
+        
+
+        place_brush(image,tangent,boundary,region_id,50,10,current_region_point);
+
+
+} 
+
+return 0;
+
+}
 
 
