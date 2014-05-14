@@ -5,6 +5,8 @@
 #include "cv.h"
 #include "fstream"
 #include "opencv2/highgui/highgui.hpp"
+#include "time.h"
+#include <iostream>
 #include "opencv2/imgproc/imgproc.hpp"
 using namespace std;
 using namespace cv;
@@ -17,6 +19,8 @@ Mat_<double> place_brush(const Mat& input_image, const Mat_<Point2d>& inner_tang
         const Mat_<int>& boundary, const Mat_<int>& region_id,
         double major_axis, double minor_axis, const Mat_<int>& current_region_point){ 
     // calculate the direction of each pixel
+    clock_t t = clock();
+
     int width = input_image.cols;
     int height = input_image.rows;
 
@@ -84,6 +88,8 @@ Mat_<double> place_brush(const Mat& input_image, const Mat_<Point2d>& inner_tang
 
 
     Mat temp_image;
+    int max_iteration = 1;
+    int iteration_count = 0;
     while(true){
         temp_image = Mat::zeros(height,width,CV_8UC3);
         cluster_index.clear();
@@ -177,15 +183,19 @@ Mat_<double> place_brush(const Mat& input_image, const Mat_<Point2d>& inner_tang
                 end_x = x + 10 * tangen_x / sqrt(tangen_x*tangen_x + tangen_y*tangen_y);
                 end_y = y +  10 * tangen_y / sqrt(tangen_x*tangen_x + tangen_y*tangen_y);
             }
-            line(temp_image,Point2d(x,y),Point2d(end_x,end_y),Scalar(255,255,255),3);
+            // line(temp_image,Point2d(x,y),Point2d(end_x,end_y),Scalar(255,255,255),3);
         }
 
 
-        imshow("result",temp_image);
-        waitKey(0);
-        cout<<difference<<endl;
+        // imshow("result",temp_image);
+        // waitKey(0);
+        // cout<<difference<<endl;
 
         if(difference < threshold){
+            break;
+        }
+        iteration_count++;
+        if(iteration_count > max_iteration){
             break;
         }
     }
@@ -199,7 +209,9 @@ Mat_<double> place_brush(const Mat& input_image, const Mat_<Point2d>& inner_tang
         result(i,2) = inner_tangent((int)seed_point(i,1),(int)seed_point(i,0)).x; 
         result(i,3) = inner_tangent((int)seed_point(i,1),(int)seed_point(i,0)).y; 
     }
-
+    
+    t = clock() - t;
+    cout<<"place brush time used is "<< t / CLOCKS_PER_SEC<<endl;
     return result;
 
 }
@@ -336,6 +348,7 @@ void smooth_tangent(Mat_<Point2d>& tangent, const Mat_<int> region_id,int curren
     int width = tangent.cols;
     int height = tangent.rows;
 
+    clock_t t = clock();
     Mat_<double> tangent_angle(height,width,double(0));
 
     for(int i = 0;i < width;i++){
@@ -366,7 +379,7 @@ void smooth_tangent(Mat_<Point2d>& tangent, const Mat_<int> region_id,int curren
     Mat src = Mat::zeros( Size(width,height), CV_8UC1 );
 
 
-    while(iter_num< 50){
+    while(iter_num< 10){
         Mat_<double> new_tangent_angle = tangent_angle.clone();
         // Mat_<Point2d> new_tangent(height,width,Point2d(0,0));
         for(int i = 0;i < width;i++){
@@ -428,6 +441,9 @@ void smooth_tangent(Mat_<Point2d>& tangent, const Mat_<int> region_id,int curren
         }
     } 
 
+    t = clock() - t;
+
+    cout<<"smoothing time is "<< double(t) / CLOCKS_PER_SEC<<endl; 
 }
 
 
@@ -499,8 +515,9 @@ int main(){
         cal_tangent(boundary,tangent);
 
         calculate_tangent(image,boundary,region_id,1,tangent);
-        smooth_tangent(tangent,region_id,1,dist);
-
+        // smooth_tangent(tangent,region_id,1,dist);
+        
+        /*
         for(int i = 0;i < width;i=i+20){
             for(int j = 0;j < height;j=j+20){
                 if(region_id(j,i) == 1){
@@ -526,9 +543,10 @@ int main(){
                 } 
             }
         }
+        */
 
-        imshow("src",src); 
-        waitKey(0);
+        // imshow("src",src); 
+        // waitKey(0);
 
 
         Mat_<int> current_region_point(region_point_number,2);
@@ -542,14 +560,14 @@ int main(){
                 } 
             } 
         }
-        
+
 
         place_brush(image,tangent,boundary,region_id,50,10,current_region_point);
 
 
-} 
+    } 
 
-return 0;
+    return 0;
 
 }
 
