@@ -14,15 +14,87 @@ using namespace cv;
 #define PI 3.1415926
 
 
+Point2d smooth(const Mat_<double>& tangent_angle, int current_region_id, int x, int y,
+            const Mat_<int>& region_id){
+    int kernerl_size = 15;
+    int width = tangent_angle.cols;
+    int height = tangent_angle.rows;
+    double delta_theta = 0;
+    int count = 0;
+    for(int i = x - kernerl_size;i < x + kernerl_size;i++){
+        for(int j = y - kernerl_size;j < y + kernerl_size;j++){
+            if(x < 0 || y < 0 || x >= width || y >= height){
+                continue; 
+            }
 
-Mat_<double> place_brush(const Mat& input_image, const Mat_<Point2d>& inner_tangent,
+            if(region_id(j,x) != current_region_id){
+                continue;
+            }
+            
+            if(i == x && j == y){
+                continue;
+            } 
+
+            double temp = tangent_angle(j,i) - tangent_angle(y,x);
+            count++;
+
+            if(temp > PI/2){
+                temp = PI - temp;
+                temp = -temp;
+            }
+            else if(temp < -PI/2){
+                temp = PI + temp;    
+            }
+            delta_theta = delta_theta + temp;
+
+        }
+    }
+    delta_theta = delta_theta / count;
+    
+    Point2d result;
+    result.x = cos(delta_theta);
+    result.y = sin(delta_theta);
+    // cout<<result.x<<" "<<result.y<<endl;
+    return result;
+}
+
+Mat_<double> place_brush(const Mat& input_image, Mat_<Point2d>& inner_tangent,
         const Mat_<int>& boundary, const Mat_<int>& region_id,
-        double major_axis, double minor_axis, const Mat_<int>& current_region_point){ 
+        double major_axis, double minor_axis, const Mat_<int>& current_region_point,
+        int current_region_id){ 
     // calculate the direction of each pixel
     clock_t t = clock();
 
     int width = input_image.cols;
     int height = input_image.rows;
+
+    Mat_<double> tangent_angle(height,width,double(0));
+
+    for(int i = 0;i < width;i++){
+        for(int j = 0;j < height;j++){
+            if(region_id(j,i) != current_region_id){
+                continue;
+            }
+            Point2d temp = inner_tangent(j,i);
+
+
+            double angle = 0;
+            if(abs(temp.x) < 1e-10){
+                if(temp.y > 0){
+                    angle = PI/2;
+                }
+                else{
+                    angle = -PI/2;
+                }
+            }
+            else{
+                angle = atan(temp.y / temp.x);
+            }
+            tangent_angle(j,i) = angle;
+        }
+    }  
+
+
 
 
     int region_point_number = current_region_point.rows;
@@ -41,13 +113,23 @@ Mat_<double> place_brush(const Mat& input_image, const Mat_<Point2d>& inner_tang
         for(int j = 0;j < i;j++){
             int seed_x = seed_point(j,0);
             int seed_y = seed_point(j,1);
-            double seed_tangent_x = inner_tangent(seed_y,seed_x).x;
-            double seed_tangent_y = inner_tangent(seed_y,seed_x).y; 
+            
+            Point2d temp_tangent = smooth(tangent_angle, current_region_id, seed_x,seed_y,region_id);
+
+            // double seed_tangent_x = inner_;;tangent(seed_y,seed_x).x;
+            // double seed_tangent_y = inner_tangent(seed_y,seed_x).y;
+            double seed_tangent_x = temp_tangent.x;
+            double seed_tangent_y = temp_tangent.y;
+
+            inner_tangent(seed_y,seed_x) = temp_tangent;
+
             double dist = sqrt(pow(temp_x - seed_x,2.0) + pow(temp_y - seed_y,2.0));
 
             Point2d temp1(temp_x - seed_x,temp_y - seed_y);
             Point2d temp2(seed_tangent_x,seed_tangent_y); 
             double cos_theta = (temp1.x * temp2.x + temp1.y * temp2.y) / (norm(temp1) * norm(temp2)); 
+            
+
             double x = dist * cos_theta;
             double y = dist * sqrt(1 - cos_theta * cos_theta);
             dist = sqrt(pow(x/major_axis,2.0) + pow(y/minor_axis,2.0)); 
@@ -63,14 +145,14 @@ Mat_<double> place_brush(const Mat& input_image, const Mat_<Point2d>& inner_tang
             // break;
             continue;
         }
-        double curr_tangent_x = inner_tangent((int)temp_y,(int)temp_x).x;
-        double curr_tangent_y = inner_tangent((int)temp_y,(int)temp_x).y;
-        double angle = atan(curr_tangent_y / curr_tangent_x);
-
+        // double curr_tangent_x = inner_tangent((int)temp_y,(int)temp_x).x;
+        // double curr_tangent_y = inner_tangent((int)temp_y,(int)temp_x).y;
+        // double angle = atan(curr_tangent_y / curr_tangent_x);
 
         seed_point(i,0) = temp_x;
         seed_point(i,1) = temp_y;    
     }
+    
 
     // K-means clustering
     vector<vector<int> > cluster_index(seed_number);
@@ -88,12 +170,16 @@ Mat_<double> place_brush(const Mat& input_image, const Mat_<Point2d>& inner_tang
 
 
     Mat temp_image;
-    int max_iteration = 1;
+    int max_iteration = 5;
     int iteration_count = 0;
+
+     
+
     while(true){
         temp_image = Mat::zeros(height,width,CV_8UC3);
         cluster_index.clear();
         cluster_index.resize(seed_number);
+
         for(int i = 0;i < region_point_number;i++){
             double temp_x = current_region_point(i,0);
             double temp_y = current_region_point(i,1); 
@@ -103,8 +189,14 @@ Mat_<double> place_brush(const Mat& input_image, const Mat_<Point2d>& inner_tang
             for(int j = 0;j < seed_number;j++){
                 int seed_x = seed_point(j,0);
                 int seed_y = seed_point(j,1);
-                double seed_tangent_x = inner_tangent(seed_y,seed_x).x;
-                double seed_tangent_y = inner_tangent(seed_y,seed_x).y; 
+                
+                // Point2d temp_tangent = smooth(tangent_angle, current_region_id, seed_x,seed_y,region_id);
+                Point2d temp_tangent = inner_tangent(seed_y,seed_x);
+                // double seed_tangent_x = inner_tangent(seed_y,seed_x).x;
+                // double seed_tangent_y = inner_tangent(seed_y,seed_x).y; 
+                double seed_tangent_x = temp_tangent.x;
+                double seed_tangent_y = temp_tangent.y;
+
                 double dist = sqrt(pow(temp_x - seed_x,2.0) + pow(temp_y - seed_y,2.0));
 
                 Point2d temp1(temp_x - seed_x,temp_y - seed_y);
@@ -132,7 +224,6 @@ Mat_<double> place_brush(const Mat& input_image, const Mat_<Point2d>& inner_tang
             cluster_index[min_index].push_back(i);
         }
 
-
         // calculate new seed point
         Mat_<int> old_seed_point = seed_point.clone();
         for(int i = 0;i < cluster_index.size();i++){
@@ -155,10 +246,11 @@ Mat_<double> place_brush(const Mat& input_image, const Mat_<Point2d>& inner_tang
 
             seed_point(i,0) = (int)x;
             seed_point(i,1) = (int)y;
+            inner_tangent(int(y),int(x)) = smooth(tangent_angle,current_region_id,x,y,region_id);
         } 
 
         double difference = norm(seed_point - old_seed_point);
-
+        
         for(int i = 0;i < seed_number;i++){
             double x = seed_point(i,0);
             double y = seed_point(i,1);
@@ -168,9 +260,11 @@ Mat_<double> place_brush(const Mat& input_image, const Mat_<Point2d>& inner_tang
                 //break;
             }
 
-
-            double tangen_x = inner_tangent((int)y,(int)x).x;
-            double tangen_y = inner_tangent((int)y,(int)x).y;
+            Point2d temp_tangent = smooth(tangent_angle,current_region_id,(int)x,(int)y,region_id);
+            // double tangen_x = inner_tangent((int)y,(int)x).x;
+            // double tangen_y = inner_tangent((int)y,(int)x).y;
+            double tangen_x = temp_tangent.x;
+            double tangen_y = temp_tangent.y;
 
             circle(temp_image, Point2d(x,y),5,Scalar(255,255,255));
             double end_x = x;
@@ -183,13 +277,13 @@ Mat_<double> place_brush(const Mat& input_image, const Mat_<Point2d>& inner_tang
                 end_x = x + 10 * tangen_x / sqrt(tangen_x*tangen_x + tangen_y*tangen_y);
                 end_y = y +  10 * tangen_y / sqrt(tangen_x*tangen_x + tangen_y*tangen_y);
             }
-            // line(temp_image,Point2d(x,y),Point2d(end_x,end_y),Scalar(255,255,255),3);
+            line(temp_image,Point2d(x,y),Point2d(end_x,end_y),Scalar(255,255,255),3);
         }
 
 
-        // imshow("result",temp_image);
-        // waitKey(0);
-        // cout<<difference<<endl;
+        imshow("result",temp_image);
+        waitKey(0);
+        cout<<difference<<endl;
 
         if(difference < threshold){
             break;
@@ -206,8 +300,12 @@ Mat_<double> place_brush(const Mat& input_image, const Mat_<Point2d>& inner_tang
     for(int i = 0;i < seed_number;i++){
         result(i,0) = seed_point(i,0);
         result(i,1) = seed_point(i,1);
+        Point2d temp_tangent = smooth(tangent_angle, current_region_id,
+                            (int)seed_point(i,0), (int)seed_point(i,1),region_id);
         result(i,2) = inner_tangent((int)seed_point(i,1),(int)seed_point(i,0)).x; 
-        result(i,3) = inner_tangent((int)seed_point(i,1),(int)seed_point(i,0)).y; 
+        result(i,2) = temp_tangent.x; 
+        // result(i,3) = inner_tangent((int)seed_point(i,1),(int)seed_point(i,0)).y; 
+        result(i,3) = temp_tangent.y;
     }
     
     t = clock() - t;
@@ -562,7 +660,7 @@ int main(){
         }
 
 
-        place_brush(image,tangent,boundary,region_id,50,10,current_region_point);
+        place_brush(image,tangent,boundary,region_id,50,10,current_region_point,1);
 
 
     } 
