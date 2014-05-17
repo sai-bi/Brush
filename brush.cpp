@@ -615,36 +615,8 @@ int main(){
         cout<<"Smooth tangent..."<<endl;
         smooth_tangent(tangent,region_id,1,dist,current_region_point);
 
-        /*
-           for(int i = 0;i < width;i=i+20){
-           for(int j = 0;j < height;j=j+20){
-           if(region_id(j,i) == 1){
-           double x = tangent(j,i).x;
-           double y = tangent(j,i).y;
-           double end_x = i + 10 * x / sqrt(x*x+y*y);
-           double end_y = j + 10 * y / sqrt(x*x+y*y);
-        // cout<<i<<" "<<j<<" "<<" "<<x<<y<<endl;
-        line(src,Point2d(i,j),Point2d(end_x,end_y),Scalar(255),1,8);
 
-        Point2d pStart(i,j);
-        Point2d pEnd(end_x,end_y); 
-        Point arrow;
-        int len = 4;
-        int alpha = 15;
-        double angle = atan2((double)(pStart.y - pEnd.y), (double)(pStart.x - pEnd.x));  
-        arrow.x = pEnd.x + len * cos(angle + PI * alpha / 180);     
-        arrow.y = pEnd.y + len * sin(angle + PI * alpha / 180);  
-        line(src, pEnd, arrow, Scalar(255), 1, 8);
-        arrow.x = pEnd.x + len * cos(angle - PI * alpha / 180);     
-        arrow.y = pEnd.y + len * sin(angle - PI * alpha / 180);    
-        line(src, pEnd, arrow, Scalar(255), 1, 8);
-        } 
-        }
-        }
-        */
 
-        // imshow("src",src); 
-        // waitKey(0);
 
 
         cout<<"place brush..."<<endl;
