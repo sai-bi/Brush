@@ -20,7 +20,7 @@ Mat_<double> place_brush(const Mat& input_image, const Mat_<Point2d>& inner_tang
         double major_axis, double minor_axis, const Mat_<int>& current_region_point){ 
     // calculate the direction of each pixel
     clock_t t = clock();
-    
+
     cout<<"region point: "<<current_region_point.rows<<endl; 
     int width = input_image.cols;
     int height = input_image.rows;
@@ -30,12 +30,12 @@ Mat_<double> place_brush(const Mat& input_image, const Mat_<Point2d>& inner_tang
     // random seed
 
     int seed_number = 1.3 * region_point_number / (PI * major_axis * minor_axis);
-    
+
     Mat test_image = Mat::zeros(height,width,CV_8UC3);
     Mat_<int> seed_point(seed_number,2);
     RNG random_generator(getTickCount());
-    
-     
+
+
 
     for(int i = 0;i < seed_number;i++){
         int index = random_generator.uniform(0,region_point_number);
@@ -65,7 +65,6 @@ Mat_<double> place_brush(const Mat& input_image, const Mat_<Point2d>& inner_tang
 
         if(inside_ellipse == true){
             i--;
-            // break;
             continue;
         }
         double curr_tangent_x = inner_tangent((int)temp_y,(int)temp_x).x;
@@ -93,236 +92,227 @@ Mat_<double> place_brush(const Mat& input_image, const Mat_<Point2d>& inner_tang
 
 
     Mat temp_image;
-    int max_iteration = 2;
+    int max_iteration = 4;
     int iteration_count = 0;
-    /* 
-    while(true){
-        temp_image = Mat::zeros(height,width,CV_8UC3);
-        cluster_index.clear();
-        cluster_index.resize(seed_number);
-            
-        #pragma omp parallel for
-        for(int i = 0;i < region_point_number;i++){
-            double temp_x = current_region_point(i,0);
-            double temp_y = current_region_point(i,1); 
-            int min_index = 0;
-            double min_dist = 1e10;
-            Vec3b curr_point_rgb = input_image.at<Vec3b>((int)temp_y,(int)temp_x);
-            for(int j = 0;j < seed_number;j++){
-                int seed_x = seed_point(j,0);
-                int seed_y = seed_point(j,1);
-                double seed_tangent_x = inner_tangent(seed_y,seed_x).x;
-                double seed_tangent_y = inner_tangent(seed_y,seed_x).y; 
-                double dist = sqrt(pow(temp_x - seed_x,2.0) + pow(temp_y - seed_y,2.0));
 
-                Point2d temp1(temp_x - seed_x,temp_y - seed_y);
-                Point2d temp2(seed_tangent_x,seed_tangent_y); 
-                if(abs(norm(temp1)) < 1e-10){
-                    min_index = j;
-                    break;
+    // if region number is smaller than 5000, simply use the normal k-means method
+    // otherwise, use mini-batch k-means 
+    cout<< region_point_number<<endl;
+    if(region_point_number < 5000){
+        while(true){
+            temp_image = Mat::zeros(height,width,CV_8UC3);
+            cluster_index.clear();
+            cluster_index.resize(seed_number);
+
+            #pragma omp parallel for
+            for(int i = 0;i < region_point_number;i++){
+                double temp_x = current_region_point(i,0);
+                double temp_y = current_region_point(i,1); 
+                int min_index = 0;
+                double min_dist = 1e10;
+                Vec3b curr_point_rgb = input_image.at<Vec3b>((int)temp_y,(int)temp_x);
+                for(int j = 0;j < seed_number;j++){
+                    int seed_x = seed_point(j,0);
+                    int seed_y = seed_point(j,1);
+                    double seed_tangent_x = inner_tangent(seed_y,seed_x).x;
+                    double seed_tangent_y = inner_tangent(seed_y,seed_x).y; 
+                    double dist = sqrt(pow(temp_x - seed_x,2.0) + pow(temp_y - seed_y,2.0));
+
+                    Point2d temp1(temp_x - seed_x,temp_y - seed_y);
+                    Point2d temp2(seed_tangent_x,seed_tangent_y); 
+                    if(abs(norm(temp1)) < 1e-10){
+                        min_index = j;
+                        break;
+                    }
+                    double cos_theta = (temp1.x * temp2.x + temp1.y * temp2.y) / (norm(temp1) * norm(temp2)); 
+                    double x = dist * cos_theta;
+                    double y = dist * sqrt(1 - cos_theta * cos_theta);
+                    dist = sqrt(pow(x/major_axis,2.0) + pow(y/minor_axis,2.0)); 
+
+                    Vec3b seed_rgb = input_image.at<Vec3b>(seed_y,seed_x);
+
+                    double color_dist = norm(curr_point_rgb - seed_rgb); 
+
+                    dist = dist + color_dist * color_weight;
+                    if(dist < min_dist){
+                        min_dist = dist;
+                        min_index = j;
+                    } 
                 }
-                double cos_theta = (temp1.x * temp2.x + temp1.y * temp2.y) / (norm(temp1) * norm(temp2)); 
-                double x = dist * cos_theta;
-                double y = dist * sqrt(1 - cos_theta * cos_theta);
-                dist = sqrt(pow(x/major_axis,2.0) + pow(y/minor_axis,2.0)); 
-
-                Vec3b seed_rgb = input_image.at<Vec3b>(seed_y,seed_x);
-
-                double color_dist = norm(curr_point_rgb - seed_rgb); 
-
-                dist = dist + color_dist * color_weight;
-                if(dist < min_dist){
-                    min_dist = dist;
-                    min_index = j;
-                } 
-            }
-            temp_image.at<Vec3b>((int)temp_y,(int)temp_x) = color[min_index];
-            cluster_index[min_index].push_back(i);
-        }
-        
-
-        // calculate new seed point
-        Mat_<int> old_seed_point = seed_point.clone();
-        for(int i = 0;i < cluster_index.size();i++){
-            double x = 0;
-            double y = 0;
-            for(int j = 0;j < cluster_index[i].size();j++){
-                double temp_x = current_region_point(cluster_index[i][j],0);
-                double temp_y = current_region_point(cluster_index[i][j],1);
-                x = x + temp_x;
-                y = y + temp_y;
-            }
-            if(cluster_index[i].size() == 0){
-                cout<<"cluster is 0"<<endl;
-            }
-            //cout<<cluster_index[i].size()<<endl;
-            if(cluster_index[i].size() != 0){
-                x = x / cluster_index[i].size();
-                y = y / cluster_index[i].size();
-            }
-
-            seed_point(i,0) = (int)x;
-            seed_point(i,1) = (int)y;
-        } 
-
-        double difference = norm(seed_point - old_seed_point);
-
-        for(int i = 0;i < seed_number;i++){
-            double x = seed_point(i,0);
-            double y = seed_point(i,1);
-
-            if(x >= width || y >= height || x < 0 || y < 0){
-                cout<<"point exceed"<<endl;
-                //break;
+                temp_image.at<Vec3b>((int)temp_y,(int)temp_x) = color[min_index];
+                cluster_index[min_index].push_back(i);
             }
 
 
-            double tangen_x = inner_tangent((int)y,(int)x).x;
-            double tangen_y = inner_tangent((int)y,(int)x).y;
-
-            circle(temp_image, Point2d(x,y),5,Scalar(255,255,255));
-            double end_x = x;
-            double end_y = y;
-            if(abs(tangen_x)<1e-10){
-                end_x = x;
-                end_y = y + 10;
-            }
-            else{
-                end_x = x + 10 * tangen_x / sqrt(tangen_x*tangen_x + tangen_y*tangen_y);
-                end_y = y +  10 * tangen_y / sqrt(tangen_x*tangen_x + tangen_y*tangen_y);
-            }
-            line(temp_image,Point2d(x,y),Point2d(end_x,end_y),Scalar(255,255,255),3);
-        }
-        t = clock() - t;
-        cout<<"brush time is" << double(t) / CLOCKS_PER_SEC << endl; 
-        t = clock();
-
-        imshow("result",temp_image);
-        waitKey(0);
-        cout<<difference<<endl;
-
-        if(difference < threshold){
-            break;
-        }
-        iteration_count++;
-        if(iteration_count > max_iteration){
-            break;
-        }
-    }
-    */
-    // int cluster_count[seed_number] = {0}; 
-    // int *cluster_count = new int[seed_number];
-    // for(int i = 0;i < seed_number;i++){
-        // cluster_count[i] = 0;
-    // }
-    while(true){
-        int *cluster_count = new int[seed_number];
-        for(int i = 0;i < seed_number;i++){
-            cluster_count[i] = 1;
-        }
-        temp_image = Mat::zeros(height,width,CV_8UC3);
-        int sample_num = region_point_number / 20;
-        RNG  random_generator(getTickCount()); 
-        Mat_<int> sample_point(sample_num,2);
-        int *point_cluster = new int[sample_num];
-        
-        for(int i = 0;i < sample_num;i++){
-            int index = random_generator.uniform(0,region_point_number); 
-            double temp_x = current_region_point(index,0);
-            double temp_y = current_region_point(index,1);
-            sample_point(i,0) = temp_x;
-            sample_point(i,1) = temp_y;    
-
-            int min_index = 0;
-            double min_dist = 1e10;
-            Vec3b curr_point_rgb = input_image.at<Vec3b>((int)temp_y,(int)temp_x);
-            for(int j = 0;j < seed_number;j++){
-                int seed_x = seed_point(j,0);
-                int seed_y = seed_point(j,1);
-                double seed_tangent_x = inner_tangent(seed_y,seed_x).x;
-                double seed_tangent_y = inner_tangent(seed_y,seed_x).y; 
-                double dist = sqrt(pow(temp_x - seed_x,2.0) + pow(temp_y - seed_y,2.0));
-
-                Point2d temp1(temp_x - seed_x,temp_y - seed_y);
-                Point2d temp2(seed_tangent_x,seed_tangent_y); 
-                if(abs(norm(temp1)) < 1e-10){
-                    min_index = j;
-                    break;
+            // calculate new seed point
+            Mat_<int> old_seed_point = seed_point.clone();
+            for(int i = 0;i < cluster_index.size();i++){
+                double x = 0;
+                double y = 0;
+                for(int j = 0;j < cluster_index[i].size();j++){
+                    double temp_x = current_region_point(cluster_index[i][j],0);
+                    double temp_y = current_region_point(cluster_index[i][j],1);
+                    x = x + temp_x;
+                    y = y + temp_y;
                 }
-                double cos_theta = (temp1.x * temp2.x + temp1.y * temp2.y) / (norm(temp1) * norm(temp2)); 
-                double x = dist * cos_theta;
-                double y = dist * sqrt(1 - cos_theta * cos_theta);
-                dist = sqrt(pow(x/major_axis,2.0) + pow(y/minor_axis,2.0)); 
+                if(cluster_index[i].size() == 0){
+                    cout<<"cluster is 0"<<endl;
+                }
+                if(cluster_index[i].size() != 0){
+                    x = x / cluster_index[i].size();
+                    y = y / cluster_index[i].size();
+                }
+                seed_point(i,0) = (int)x;
+                seed_point(i,1) = (int)y;
+            } 
 
-                Vec3b seed_rgb = input_image.at<Vec3b>(seed_y,seed_x);
+            double difference = norm(seed_point - old_seed_point);
 
-                double color_dist = norm(curr_point_rgb - seed_rgb); 
+            for(int i = 0;i < seed_number;i++){
+                double x = seed_point(i,0);
+                double y = seed_point(i,1);
 
-                dist = dist + color_dist * color_weight;
-                if(dist < min_dist){
-                    min_dist = dist;
-                    min_index = j;
-                } 
-            }
-            temp_image.at<Vec3b>((int)temp_y,(int)temp_x) = color[min_index];
-            // cluster_index[min_index].push_back(i);
-            point_cluster[i] = min_index; 
-        }
+                if(x >= width || y >= height || x < 0 || y < 0){
+                    // cout<<"point exceed"<<endl;
+                    //break;
+                    continue;
+                }
 
-        for(int i = 0;i < sample_num;i++){
-            int cluster_index = point_cluster[i];
-            cluster_count[cluster_index] += 1;
-            double rate = 1.0 / cluster_count[cluster_index];
-            // seed_point(cluster_index,0) = (1 - rate) * seed_point(cluster_index,0) + 
-                            // rate * sample_point(i,0);
-            // seed_point(cluster_index,1) = (1 - rate) * seed_point(cluster_index,1) + 
-                            // rate * sample_point(i,1);
-            seed_point(cluster_index,0) =  seed_point(cluster_index,0) + sample_point(i,0);
-            seed_point(cluster_index,1) =  seed_point(cluster_index,1) + sample_point(i,1);
-        }
-        
-        for(int i = 0;i < seed_number;i++){
-            seed_point(i,0) = seed_point(i,0) / double(cluster_count[i]);
-            seed_point(i,1) = seed_point(i,1) / double(cluster_count[i]);
-        }    
 
-        iteration_count++;
-        if(iteration_count > max_iteration){
-            break;
-        }
-            
-        for(int i = 0;i < seed_number;i++){
-            double x = seed_point(i,0);
-            double y = seed_point(i,1);
+                double tangen_x = inner_tangent((int)y,(int)x).x;
+                double tangen_y = inner_tangent((int)y,(int)x).y;
 
-            if(x >= width || y >= height || x < 0 || y < 0){
-                cout<<"point exceed"<<endl;
-                //break;
+                circle(temp_image, Point2d(x,y),5,Scalar(255,255,255));
+                double end_x = x;
+                double end_y = y;
+                if(abs(tangen_x)<1e-10){
+                    end_x = x;
+                    end_y = y + 10;
+                }
+                else{
+                    end_x = x + 10 * tangen_x / sqrt(tangen_x*tangen_x + tangen_y*tangen_y);
+                    end_y = y +  10 * tangen_y / sqrt(tangen_x*tangen_x + tangen_y*tangen_y);
+                }
+                line(temp_image,Point2d(x,y),Point2d(end_x,end_y),Scalar(255,255,255),3);
             }
 
 
-            double tangen_x = inner_tangent((int)y,(int)x).x;
-            double tangen_y = inner_tangent((int)y,(int)x).y;
+            imshow("result",temp_image);
+            // waitKey(0);
+            cout<<difference<<endl;
 
-            circle(temp_image, Point2d(x,y),5,Scalar(255,255,255));
-            double end_x = x;
-            double end_y = y;
-            if(abs(tangen_x)<1e-10){
-                end_x = x;
-                end_y = y + 10;
+            if(difference < threshold){
+                break;
             }
-            else{
-                end_x = x + 10 * tangen_x / sqrt(tangen_x*tangen_x + tangen_y*tangen_y);
-                end_y = y +  10 * tangen_y / sqrt(tangen_x*tangen_x + tangen_y*tangen_y);
+            iteration_count++;
+            if(iteration_count > max_iteration){
+                break;
             }
-            line(temp_image,Point2d(x,y),Point2d(end_x,end_y),Scalar(255,255,255),3);
         }
-        imshow("result",temp_image);
-        waitKey(0);
+    } else{
+        while(true){
+            int *cluster_count = new int[seed_number];
+            for(int i = 0;i < seed_number;i++){
+                cluster_count[i] = 1;
+            }
+            temp_image = Mat::zeros(height,width,CV_8UC3);
+            int sample_num = region_point_number / 20;
+            RNG  random_generator(getTickCount()); 
+            Mat_<int> sample_point(sample_num,2);
+            int *point_cluster = new int[sample_num];
+
+            for(int i = 0;i < sample_num;i++){
+                int index = random_generator.uniform(0,region_point_number); 
+                double temp_x = current_region_point(index,0);
+                double temp_y = current_region_point(index,1);
+                sample_point(i,0) = temp_x;
+                sample_point(i,1) = temp_y;    
+
+                int min_index = 0;
+                double min_dist = 1e10;
+                Vec3b curr_point_rgb = input_image.at<Vec3b>((int)temp_y,(int)temp_x);
+                for(int j = 0;j < seed_number;j++){
+                    int seed_x = seed_point(j,0);
+                    int seed_y = seed_point(j,1);
+                    double seed_tangent_x = inner_tangent(seed_y,seed_x).x;
+                    double seed_tangent_y = inner_tangent(seed_y,seed_x).y; 
+                    double dist = sqrt(pow(temp_x - seed_x,2.0) + pow(temp_y - seed_y,2.0));
+
+                    Point2d temp1(temp_x - seed_x,temp_y - seed_y);
+                    Point2d temp2(seed_tangent_x,seed_tangent_y); 
+                    if(abs(norm(temp1)) < 1e-10){
+                        min_index = j;
+                        break;
+                    }
+                    double cos_theta = (temp1.x * temp2.x + temp1.y * temp2.y) / (norm(temp1) * norm(temp2)); 
+                    double x = dist * cos_theta;
+                    double y = dist * sqrt(1 - cos_theta * cos_theta);
+                    dist = sqrt(pow(x/major_axis,2.0) + pow(y/minor_axis,2.0)); 
+
+                    Vec3b seed_rgb = input_image.at<Vec3b>(seed_y,seed_x);
+
+                    double color_dist = norm(curr_point_rgb - seed_rgb); 
+
+                    dist = dist + color_dist * color_weight;
+                    if(dist < min_dist){
+                        min_dist = dist;
+                        min_index = j;
+                    } 
+                }
+                temp_image.at<Vec3b>((int)temp_y,(int)temp_x) = color[min_index];
+                point_cluster[i] = min_index; 
+            }
+
+            for(int i = 0;i < sample_num;i++){
+                int cluster_index = point_cluster[i];
+                cluster_count[cluster_index] += 1;
+                double rate = 1.0 / cluster_count[cluster_index]; 
+                seed_point(cluster_index,0) =  seed_point(cluster_index,0) + sample_point(i,0);
+                seed_point(cluster_index,1) =  seed_point(cluster_index,1) + sample_point(i,1);
+            }
+
+            for(int i = 0;i < seed_number;i++){
+                seed_point(i,0) = seed_point(i,0) / double(cluster_count[i]);
+                seed_point(i,1) = seed_point(i,1) / double(cluster_count[i]);
+            }    
+
+
+
+            for(int i = 0;i < seed_number;i++){
+                double x = seed_point(i,0);
+                double y = seed_point(i,1);
+
+                if(x >= width || y >= height || x < 0 || y < 0){
+                    continue;
+                }
+
+
+                double tangen_x = inner_tangent((int)y,(int)x).x;
+                double tangen_y = inner_tangent((int)y,(int)x).y;
+
+                circle(temp_image, Point2d(x,y),5,Scalar(255,255,255));
+                double end_x = x;
+                double end_y = y;
+                if(abs(tangen_x)<1e-10){
+                    end_x = x;
+                    end_y = y + 10;
+                }
+                else{
+                    end_x = x + 10 * tangen_x / sqrt(tangen_x*tangen_x + tangen_y*tangen_y);
+                    end_y = y +  10 * tangen_y / sqrt(tangen_x*tangen_x + tangen_y*tangen_y);
+                }
+                line(temp_image,Point2d(x,y),Point2d(end_x,end_y),Scalar(255,255,255),3);
+            }
+            imshow("result",temp_image);
+            // waitKey(0);
+            iteration_count++;
+            if(iteration_count > max_iteration){
+                break;
+            }
+        }
     }
     t = clock() - t;
     cout<<"place brush time used is "<< double(t) / CLOCKS_PER_SEC<<endl;
-
     waitKey(0);
 
     Mat_<double> result(seed_number,4);
@@ -333,9 +323,7 @@ Mat_<double> place_brush(const Mat& input_image, const Mat_<Point2d>& inner_tang
         result(i,2) = inner_tangent((int)seed_point(i,1),(int)seed_point(i,0)).x; 
         result(i,3) = inner_tangent((int)seed_point(i,1),(int)seed_point(i,0)).y; 
     }
-    
-    // t = clock() - t;
-    // cout<<"place brush time used is "<< t / CLOCKS_PER_SEC<<endl;
+
     return result;
 
 }
@@ -387,7 +375,6 @@ void calculate_tangent(const Mat& input_image,
                     if(j * k != 0 || (j==0 && k==0)){
                         continue;
                     }
-
 
                     int new_x = x + j;
                     int new_y = y + k;
@@ -474,7 +461,7 @@ void smooth_tangent(Mat_<Point2d>& tangent, const Mat_<int> region_id,int curren
 
     clock_t t = clock();
     Mat_<double> tangent_angle(height,width,double(0));
-    
+
     for(int i = 0;i < current_region_point.rows;i++){
         int x = current_region_point(i,0);
         int y = current_region_point(i,1);
@@ -499,7 +486,7 @@ void smooth_tangent(Mat_<Point2d>& tangent, const Mat_<int> region_id,int curren
     int iter_num = 0; 
     Mat src = Mat::zeros( Size(width,height), CV_8UC1 );
 
-    while(iter_num< 2){
+    while(iter_num< 5){
         Mat_<double> new_tangent_angle = tangent_angle.clone();
         for(int i = 0;i < current_region_point.rows;i++){
             int point_x = current_region_point(i,0);
@@ -549,7 +536,7 @@ void smooth_tangent(Mat_<Point2d>& tangent, const Mat_<int> region_id,int curren
         int y = current_region_point(i,1);
         tangent(y,x).x = cos(tangent_angle(y,x));
         tangent(y,x).y = sin(tangent_angle(y,x)); 
-        
+
     }
 
     t = clock() - t;
@@ -631,37 +618,39 @@ int main(){
 
 
         Mat_<Point2d> tangent(height,width,Point2d(0,0));
-
-        cal_tangent(boundary,tangent);
-
-        calculate_tangent(image,boundary,region_id,1,tangent);
-        smooth_tangent(tangent,region_id,1,dist,current_region_point);
         
-        /*
-        for(int i = 0;i < width;i=i+20){
-            for(int j = 0;j < height;j=j+20){
-                if(region_id(j,i) == 1){
-                    double x = tangent(j,i).x;
-                    double y = tangent(j,i).y;
-                    double end_x = i + 10 * x / sqrt(x*x+y*y);
-                    double end_y = j + 10 * y / sqrt(x*x+y*y);
-                    // cout<<i<<" "<<j<<" "<<" "<<x<<y<<endl;
-                    line(src,Point2d(i,j),Point2d(end_x,end_y),Scalar(255),1,8);
+        cout<<"calculate tangent..."<<endl;
+        cal_tangent(boundary,tangent);
+        cout<<"calculate inner tangent..."<<endl;
+        calculate_tangent(image,boundary,region_id,1,tangent);
+        cout<<"Smooth tangent..."<<endl;
+        smooth_tangent(tangent,region_id,1,dist,current_region_point);
 
-                    Point2d pStart(i,j);
-                    Point2d pEnd(end_x,end_y); 
-                    Point arrow;
-                    int len = 4;
-                    int alpha = 15;
-                    double angle = atan2((double)(pStart.y - pEnd.y), (double)(pStart.x - pEnd.x));  
-                    arrow.x = pEnd.x + len * cos(angle + PI * alpha / 180);     
-                    arrow.y = pEnd.y + len * sin(angle + PI * alpha / 180);  
-                    line(src, pEnd, arrow, Scalar(255), 1, 8);
-                    arrow.x = pEnd.x + len * cos(angle - PI * alpha / 180);     
-                    arrow.y = pEnd.y + len * sin(angle - PI * alpha / 180);    
-                    line(src, pEnd, arrow, Scalar(255), 1, 8);
-                } 
-            }
+        /*
+           for(int i = 0;i < width;i=i+20){
+           for(int j = 0;j < height;j=j+20){
+           if(region_id(j,i) == 1){
+           double x = tangent(j,i).x;
+           double y = tangent(j,i).y;
+           double end_x = i + 10 * x / sqrt(x*x+y*y);
+           double end_y = j + 10 * y / sqrt(x*x+y*y);
+        // cout<<i<<" "<<j<<" "<<" "<<x<<y<<endl;
+        line(src,Point2d(i,j),Point2d(end_x,end_y),Scalar(255),1,8);
+
+        Point2d pStart(i,j);
+        Point2d pEnd(end_x,end_y); 
+        Point arrow;
+        int len = 4;
+        int alpha = 15;
+        double angle = atan2((double)(pStart.y - pEnd.y), (double)(pStart.x - pEnd.x));  
+        arrow.x = pEnd.x + len * cos(angle + PI * alpha / 180);     
+        arrow.y = pEnd.y + len * sin(angle + PI * alpha / 180);  
+        line(src, pEnd, arrow, Scalar(255), 1, 8);
+        arrow.x = pEnd.x + len * cos(angle - PI * alpha / 180);     
+        arrow.y = pEnd.y + len * sin(angle - PI * alpha / 180);    
+        line(src, pEnd, arrow, Scalar(255), 1, 8);
+        } 
+        }
         }
         */
 
@@ -669,7 +658,7 @@ int main(){
         // waitKey(0);
 
 
-
+        cout<<"place brush..."<<endl;
         place_brush(image,tangent,boundary,region_id,50,10,current_region_point);
 
 
