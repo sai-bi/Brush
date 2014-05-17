@@ -1,5 +1,5 @@
 /**
- * @author 
+ * @author Bi Sai 
  * @version 2014/05/06
  */
 #include "cv.h"
@@ -12,7 +12,6 @@ using namespace std;
 using namespace cv;
 
 #define PI 3.1415926
-
 
 
 Mat_<double> place_brush(const Mat& input_image, const Mat_<Point2d>& inner_tangent,
@@ -614,9 +613,6 @@ int main(){
         calculate_tangent(image,boundary,region_id,1,tangent);
         cout<<"Smooth tangent..."<<endl;
         smooth_tangent(tangent,region_id,1,dist,current_region_point);
-
-
-
 
 
         cout<<"place brush..."<<endl;
