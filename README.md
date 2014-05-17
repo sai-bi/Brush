@@ -9,4 +9,5 @@ Details
 * Fast K-Means implementation with min-batch
 
 Sample results
+
 ![Brush location samples](./brush.png)
