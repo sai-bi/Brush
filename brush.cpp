@@ -29,12 +29,11 @@ Mat_<double> place_brush(const Mat& input_image, const Mat_<Point2d>& inner_tang
     int region_point_number = current_region_point.rows;
     // random seed
 
-    int seed_number = 1.3 * region_point_number / (PI * major_axis * minor_axis);
+    int seed_number = 1.3 * region_point_number / (PI * major_axis * minor_axis) + 1;
 
     Mat test_image = Mat::zeros(height,width,CV_8UC3);
     Mat_<int> seed_point(seed_number,2);
     RNG random_generator(getTickCount());
-
 
 
     for(int i = 0;i < seed_number;i++){
@@ -71,13 +70,11 @@ Mat_<double> place_brush(const Mat& input_image, const Mat_<Point2d>& inner_tang
         double curr_tangent_y = inner_tangent((int)temp_y,(int)temp_x).y;
         double angle = atan(curr_tangent_y / curr_tangent_x);
 
-
         seed_point(i,0) = temp_x;
         seed_point(i,1) = temp_y;    
     }
 
     // K-means clustering
-    vector<vector<int> > cluster_index(seed_number);
     double threshold = 5;
     double color_weight = 0.01;
 
@@ -96,14 +93,17 @@ Mat_<double> place_brush(const Mat& input_image, const Mat_<Point2d>& inner_tang
     int iteration_count = 0;
 
     // if region number is smaller than 5000, simply use the normal k-means method
-    // otherwise, use mini-batch k-means 
-    cout<< region_point_number<<endl;
-    if(region_point_number < 5000){
+    // otherwise, use mini-batch k-means    
+    
+    if(region_point_number < 1000){
         while(true){
             temp_image = Mat::zeros(height,width,CV_8UC3);
-            cluster_index.clear();
-            cluster_index.resize(seed_number);
-
+            int *point_cluster = new int[region_point_number]; 
+            int *cluster_count = new int[seed_number];
+            for(int i = 0;i < seed_number;i++){
+                cluster_count[i] = 1;
+            }
+            cout<<"seed: "<<seed_number<<endl;
             #pragma omp parallel for
             for(int i = 0;i < region_point_number;i++){
                 double temp_x = current_region_point(i,0);
@@ -140,41 +140,32 @@ Mat_<double> place_brush(const Mat& input_image, const Mat_<Point2d>& inner_tang
                     } 
                 }
                 temp_image.at<Vec3b>((int)temp_y,(int)temp_x) = color[min_index];
-                cluster_index[min_index].push_back(i);
+                // cluster_index[min_index].push_back(i);
+                point_cluster[i] = min_index;
+                cluster_count[min_index]++;
             }
 
-
             // calculate new seed point
-            Mat_<int> old_seed_point = seed_point.clone();
-            for(int i = 0;i < cluster_index.size();i++){
-                double x = 0;
-                double y = 0;
-                for(int j = 0;j < cluster_index[i].size();j++){
-                    double temp_x = current_region_point(cluster_index[i][j],0);
-                    double temp_y = current_region_point(cluster_index[i][j],1);
-                    x = x + temp_x;
-                    y = y + temp_y;
-                }
-                if(cluster_index[i].size() == 0){
-                    cout<<"cluster is 0"<<endl;
-                }
-                if(cluster_index[i].size() != 0){
-                    x = x / cluster_index[i].size();
-                    y = y / cluster_index[i].size();
-                }
-                seed_point(i,0) = (int)x;
-                seed_point(i,1) = (int)y;
-            } 
+                
+            for(int i = 0;i < region_point_number;i++){
+                int index = point_cluster[i];
+                seed_point(index,0) += current_region_point(i,0);
+                seed_point(index,1) += current_region_point(i,1);
+            }
+            
+            for(int i = 0;i < seed_number;i++){
+                seed_point(i,0) /= cluster_count[i];
+                seed_point(i,1) /= cluster_count[i];
+            }
 
-            double difference = norm(seed_point - old_seed_point);
+            delete [] cluster_count;
+            delete [] point_cluster;    
 
             for(int i = 0;i < seed_number;i++){
                 double x = seed_point(i,0);
                 double y = seed_point(i,1);
 
                 if(x >= width || y >= height || x < 0 || y < 0){
-                    // cout<<"point exceed"<<endl;
-                    //break;
                     continue;
                 }
 
@@ -199,11 +190,7 @@ Mat_<double> place_brush(const Mat& input_image, const Mat_<Point2d>& inner_tang
 
             imshow("result",temp_image);
             // waitKey(0);
-            cout<<difference<<endl;
 
-            if(difference < threshold){
-                break;
-            }
             iteration_count++;
             if(iteration_count > max_iteration){
                 break;
@@ -216,7 +203,8 @@ Mat_<double> place_brush(const Mat& input_image, const Mat_<Point2d>& inner_tang
                 cluster_count[i] = 1;
             }
             temp_image = Mat::zeros(height,width,CV_8UC3);
-            int sample_num = region_point_number / 20;
+            // int sample_num = region_point_number / 20;
+            int sample_num = 1000;
             RNG  random_generator(getTickCount()); 
             Mat_<int> sample_point(sample_num,2);
             int *point_cluster = new int[sample_num];
@@ -286,7 +274,6 @@ Mat_<double> place_brush(const Mat& input_image, const Mat_<Point2d>& inner_tang
                     continue;
                 }
 
-
                 double tangen_x = inner_tangent((int)y,(int)x).x;
                 double tangen_y = inner_tangent((int)y,(int)x).y;
 
@@ -304,7 +291,10 @@ Mat_<double> place_brush(const Mat& input_image, const Mat_<Point2d>& inner_tang
                 line(temp_image,Point2d(x,y),Point2d(end_x,end_y),Scalar(255,255,255),3);
             }
             imshow("result",temp_image);
-            // waitKey(0);
+            
+            delete [] point_cluster; 
+            delete [] cluster_count;
+
             iteration_count++;
             if(iteration_count > max_iteration){
                 break;
@@ -540,7 +530,6 @@ void smooth_tangent(Mat_<Point2d>& tangent, const Mat_<int> region_id,int curren
     }
 
     t = clock() - t;
-
     cout<<"smoothing time is "<< double(t) / CLOCKS_PER_SEC<<endl; 
 }
 
